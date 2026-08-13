@@ -4,7 +4,8 @@
   "description": "Mobius module frontends — one React+TS app per module, shared plumbing in shared/*. Backends live in mobius-api under /api/<slug>, gated by requireModule(slug).",
   "workspaces": [
     "shared/*",
-    "_template"
+    "_template",
+    "countdown"
   ],
   "scripts": {
     "dev": "npm run dev -w @mobius-modules/template",

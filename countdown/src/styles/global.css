@@ -1,0 +1,1582 @@
+/* countdown — saturated colour encodes time-to-due; the one exception is the
+   brand green, which carries the wordmark and primary actions. */
+
+:root {
+  --hue: 82; /* warm, paper-side of neutral */
+
+  --canvas: oklch(0.977 0.005 var(--hue));
+  --surface: oklch(0.995 0.002 var(--hue));
+  --sunken: oklch(0.955 0.006 var(--hue));
+  --line: oklch(0.902 0.007 var(--hue));
+  --line-strong: oklch(0.845 0.009 var(--hue));
+
+  --ink: oklch(0.235 0.012 var(--hue));
+  --ink-2: oklch(0.445 0.011 var(--hue));
+  --ink-3: oklch(0.6 0.01 var(--hue));
+
+  /* Module green (#018445) — DEFAULTS ONLY. applyBranding()
+     (shared/whitelabel) derives this whole ramp from the tenant's single
+     brandColor and sets it as inline custom properties on <html>, which
+     override these. So: never hardcode a brand green below, always go through
+     these four (plus --brand-tint) or the override does nothing. */
+  --brand: oklch(0.538 0.138 153);
+  --brand-strong: oklch(0.475 0.126 153);
+  --brand-press: oklch(0.425 0.114 153);
+  --brand-soft: oklch(0.958 0.028 155);
+  /* Secondary text/marks sitting ON the brand colour. */
+  --brand-tint: oklch(0.92 0.03 155);
+  /* Primary text/icons ON the brand colour. White suits the dark module green;
+     applyBranding() flips it to near-black for a light tenant colour. */
+  --brand-ink: #fff;
+
+  /* The four due-date bands. Each needs three values: `-text` clears AA on the
+     warm canvas, `-dot` is tuned to read as a traffic light at 13px, and `-soft`
+     tints the whole strip. They differ because accessible yellow text is olive,
+     an olive dot is not a yellow light, and neither works as a background. */
+  --overdue: oklch(0.525 0.185 27);
+  --overdue-dot: oklch(0.575 0.215 27);
+  --overdue-soft: oklch(0.958 0.026 32);
+
+  --week: oklch(0.545 0.145 52);
+  --week-dot: oklch(0.685 0.175 55);
+  --week-soft: oklch(0.962 0.03 62);
+
+  --month: oklch(0.545 0.1 88);
+  --month-dot: oklch(0.83 0.165 92);
+  --month-soft: oklch(0.966 0.034 90);
+
+  /* The same green as the default brand, written out rather than aliased to
+     var(--brand): "plenty of time" is a traffic-light semantic, and a tenant
+     whose brand is red must not get a red calm band beside the red overdue
+     one (its dot and tint below are literal greens either way). */
+  --later: oklch(0.538 0.138 153);
+  --later-dot: oklch(0.585 0.15 152);
+  --later-soft: oklch(0.962 0.024 155);
+
+  /* Resolved is neutral, not green: green now means "plenty of time". */
+  --done: oklch(0.6 0.01 var(--hue));
+  --focus: oklch(0.55 0.15 255);
+
+  --t-xs: 0.75rem;
+  --t-sm: 0.8125rem;
+  --t-base: 0.9375rem;
+  --t-md: 1.0625rem;
+  --t-lg: 1.375rem;
+
+  --r: 6px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --fast: 160ms;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --fast: 1ms;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--canvas);
+}
+
+body {
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--t-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Digits must not reflow as a countdown changes. */
+time,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- shell ---------- */
+
+.topbar {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.topbar__inner {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  margin-right: auto;
+}
+
+/* A text wordmark, deliberately: the standalone app shipped the previous
+   client's bitmap logo, which has no place in a Mobius module. Per-company
+   branding is the whitelabel layer's job (company_modules.config), not a
+   hardcoded asset. */
+/* The tenant's logo in the top bar. Bounded by the 52px bar and never
+   stretched, so a square mark and a wide wordmark both sit correctly; an
+   arbitrary customer upload must not be able to push the header around. */
+.brand__logo {
+  display: block;
+  max-height: 30px;
+  max-width: 180px;
+  width: auto;
+  object-fit: contain;
+}
+
+.brand__wordmark {
+  display: block;
+  font-size: var(--t-md);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--brand);
+}
+
+.topbar__user {
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+}
+
+.page {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 40px 24px 96px;
+}
+
+.page__head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.page__title {
+  font-size: var(--t-lg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 auto 0 0;
+}
+
+.page__count {
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  padding: 7px 13px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--sunken);
+}
+
+.btn:active:not(:disabled) {
+  background: var(--line);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Primary carries the brand green. It is the one chromatic control on screen,
+   and it never appears inside the list, so red still owns the rows. */
+.btn--primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-ink);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--brand-strong);
+  border-color: var(--brand-strong);
+}
+
+.btn--primary:active:not(:disabled) {
+  background: var(--brand-press);
+  border-color: var(--brand-press);
+}
+
+.btn--quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-2);
+  padding: 5px 8px;
+}
+
+.btn--quiet:hover:not(:disabled) {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+/* Neutral at rest: a red "Eliminar" sitting next to a red "hace 6 días" would
+   put two unrelated meanings on the same colour. It turns red on hover and once
+   armed for confirmation, which is when the warning is actually doing work. */
+.btn--danger {
+  color: var(--ink-2);
+}
+
+.btn--danger:hover:not(:disabled),
+.btn--danger.is-armed {
+  color: var(--overdue);
+  background: var(--overdue-soft);
+}
+
+/* ---------- filters + search ---------- */
+
+.toolbar {
+  margin: 20px 0 0;
+}
+
+/* One row of chips over the list, the way the owner's invoicing app does it:
+   the filter and the thing it filters are on the same screen, no drilldown. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 20px 0 0;
+}
+
+.filter {
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease);
+}
+
+.filter:hover:not(.is-active) {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.filter.is-active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-ink);
+}
+
+.filter__count {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+}
+
+.filter.is-active .filter__count {
+  color: var(--brand-tint);
+}
+
+/* The chip's own band colour, so the bar doubles as the legend for the list. */
+.filter__pip {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.filter__pip--overdue {
+  background: var(--overdue-dot);
+}
+.filter__pip--week {
+  background: var(--week-dot);
+}
+.filter__pip--month {
+  background: var(--month-dot);
+}
+.filter__pip--later {
+  background: var(--later-dot);
+}
+.filter__pip--done {
+  background: var(--done);
+}
+
+/* On the green chip a green pip would vanish; ring it so it survives. */
+.filter.is-active .filter__pip {
+  box-shadow: 0 0 0 1.5px oklch(1 0 0 / 0.9);
+}
+
+.input {
+  font: inherit;
+  font-size: var(--t-base);
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink);
+  transition: border-color var(--fast) var(--ease);
+}
+
+/* Inputs and selects compute different intrinsic heights from the same padding,
+   which bottom-aligns them at different sizes and knocks their labels out of
+   line when they sit in a row. Pin both; textareas keep their own height. */
+input.input,
+select.input {
+  min-height: 2.5rem;
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.input:hover {
+  border-color: oklch(0.78 0.01 var(--hue));
+}
+
+/* ---------- groups + rows ---------- */
+
+/* ---------- bands ----------
+   A group and each of its rows carry their band as three custom properties.
+   The heading strip, the label colour, the row tint, the left rule and the
+   light all read them from here, so a band is defined in exactly one place
+   and adding a fifth would be five lines. */
+
+.band--overdue {
+  --band: var(--overdue);
+  --band-dot: var(--overdue-dot);
+  --band-soft: var(--overdue-soft);
+}
+
+.band--week {
+  --band: var(--week);
+  --band-dot: var(--week-dot);
+  --band-soft: var(--week-soft);
+}
+
+.band--month {
+  --band: var(--month);
+  --band-dot: var(--month-dot);
+  --band-soft: var(--month-soft);
+}
+
+.band--later {
+  --band: var(--later);
+  --band-dot: var(--later-dot);
+  --band-soft: var(--later-soft);
+}
+
+/* Finished work recedes: neutral, and no tint at all. */
+.band--done {
+  --band: var(--done);
+  --band-dot: var(--done);
+  --band-soft: transparent;
+}
+
+.group {
+  margin-top: 40px;
+}
+
+/* The heading is a tinted strip rather than a hairline — it is what turns each
+   band into a visible block from across the room. */
+.group__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  background: var(--band-soft, transparent);
+}
+
+.group__label {
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--band, var(--ink-2));
+  margin: 0;
+}
+
+.group__count {
+  margin-left: auto;
+  font-size: var(--t-sm);
+  color: var(--ink-3);
+}
+
+/* A group with no band (Resueltos) keeps the old hairline: there is no tint to
+   sit on, and a floating uppercase label with no rule reads as unfinished. */
+.group__head:not([class*="band--"]) {
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rows--banded {
+  margin-top: 4px;
+}
+
+/* Each row is a strip in its band's colour, closed on the left by a rule in the
+   strong version of it. Rows inside a band are separated by the surface colour
+   rather than a hairline, so the band reads as one block instead of four. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 8px 12px 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--band-soft, transparent);
+  transition: box-shadow var(--fast) var(--ease);
+}
+
+/* Only document rows get the strip. The admin screens reuse .row for users and
+   groups, where there is no band and the plain hairline is still right. */
+.row[class*="band--"] {
+  padding-left: 11px;
+  border-left: 3px solid var(--band-dot);
+}
+
+.row[class*="band--"]:not(.band--done) {
+  border-bottom-color: var(--surface);
+}
+
+/* Resolved rows keep the geometry so they line up with the bands above, but
+   carry no rule and no tint — finished work should recede, not signal. */
+.row.band--done {
+  border-left-color: transparent;
+}
+
+/* Darkens whatever tint is underneath instead of replacing it — one rule for
+   all five bands and for the untinted admin rows. */
+.row:hover {
+  box-shadow: inset 0 0 0 999px oklch(0 0 0 / 0.024);
+}
+
+.row--new {
+  animation: flash 1.6s var(--ease);
+}
+
+@keyframes flash {
+  from {
+    background: var(--brand-soft);
+  }
+  to {
+    background: var(--band-soft, transparent);
+  }
+}
+
+/* A traffic light, at the size the client asked for: four filled lights for the
+   four bands, plus a hollow neutral ring for resolved. The ring is the shape
+   difference that keeps "done" legible in greyscale; the four live bands are
+   distinguished by the group heading and the "en 12 días" label beside them,
+   never by hue alone. */
+.dot {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--band-dot, transparent);
+  border: 1.5px solid var(--band-dot, var(--ink-3));
+}
+
+/* Yellow needs a darker rim or the light dissolves into its own tint. */
+.band--month .dot {
+  border-color: oklch(0.72 0.15 90);
+}
+
+/* Hollow, so "done" survives greyscale as a shape and not only as a colour. */
+.band--done .dot {
+  background: transparent;
+  border-color: var(--done);
+}
+
+/* Blink: 1.4s, ~0.7Hz — far below the 3Hz seizure threshold, and it stops
+   entirely under prefers-reduced-motion. */
+.band--overdue .dot {
+  animation: blink 1.4s var(--ease) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .band--overdue .dot {
+    animation: none;
+  }
+}
+
+.row__main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row__title-text {
+  font-size: var(--t-base);
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row__meta {
+  font-size: var(--t-sm);
+  color: var(--ink-3);
+}
+
+/* The light blinks; the words do not. A date that fades to 25% twice a second
+   is unreadable, and "hace 13 días" is the part they actually need. */
+.row__when {
+  flex: none;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--band, var(--ink-2));
+  text-align: right;
+}
+
+.row__actions {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--fast) var(--ease);
+}
+
+/* Revealed on hover, but also whenever focus lands inside — otherwise these
+   would be unreachable by keyboard. Never display:none. */
+.row:hover .row__actions,
+.row__actions:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .row__actions {
+    opacity: 1;
+  }
+}
+
+.row--resolved .row__title-text {
+  color: var(--ink-2);
+}
+
+/* ---------- resolved section ---------- */
+
+.disclosure {
+  margin-top: 40px;
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.disclosure:hover {
+  color: var(--ink);
+}
+
+/* A text button sitting inline inside a sentence. */
+.disclosure--link {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--brand);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---------- empty + feedback ---------- */
+
+.empty {
+  margin-top: 56px;
+  padding: 48px 24px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.empty__title {
+  margin: 0 0 4px;
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.empty__hint {
+  margin: 0 auto 20px;
+  color: var(--ink-2);
+  max-width: 42ch;
+}
+
+.notice {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--r);
+  font-size: var(--t-sm);
+  background: var(--overdue-soft);
+  color: var(--overdue);
+}
+
+.skeleton {
+  height: 45px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, transparent, var(--sunken), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--sunken);
+  }
+  .row--new {
+    animation: none;
+  }
+}
+
+/* ---------- dialog ----------
+   Native <dialog>: focus trap, Escape, top layer and focus restoration all come
+   from the platform instead of hand-rolled JS that gets them subtly wrong. */
+
+dialog {
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  width: min(28rem, calc(100vw - 32px));
+  box-shadow: 0 12px 32px -8px oklch(0.235 0.012 82 / 0.18);
+  /* Expanding the assignment section can outgrow the viewport; the body
+     scrolls so Cancelar/Guardar are never pushed off the bottom. */
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+}
+
+dialog form {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 48px);
+}
+
+dialog::backdrop {
+  background: oklch(0.235 0.012 82 / 0.32);
+  animation: fade var(--fast) var(--ease);
+}
+
+dialog[open] {
+  animation: rise var(--fast) var(--ease);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog[open],
+  dialog::backdrop {
+    animation: none;
+  }
+}
+
+.dialog__head {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dialog__title {
+  margin: 0;
+  font-size: var(--t-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dialog__body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.dialog__head,
+.dialog__foot {
+  flex: none;
+}
+
+.dialog__foot {
+  padding: 14px 20px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  background: var(--canvas);
+  border-radius: 0 0 12px 12px;
+}
+
+/* ---------- fields ---------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.field__hint {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+}
+
+/* ---------- login ---------- */
+
+.login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login__card {
+  width: min(21rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The tenant's logo, whatever shape it arrives in: bounded on both axes and
+   never stretched, so a wide wordmark and a square mark both behave. */
+.login__logo {
+  align-self: flex-start;
+  max-width: 100%;
+  max-height: 56px;
+  width: auto;
+  object-fit: contain;
+}
+
+.login__brand {
+  font-size: var(--t-lg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.login__sub {
+  margin: -12px 0 4px;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+}
+
+@media (max-width: 34rem) {
+  .page {
+    padding: 28px 16px 72px;
+  }
+
+  .topbar__inner {
+    padding: 0 16px;
+  }
+
+  /* The due date is the entire point of the product, so it must never be the
+     thing that gets dropped for want of width. Reflow it under the title
+     instead, and let long names wrap rather than truncate. */
+  .row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      "dot  title  title"
+      ".    when   actions";
+    column-gap: 12px;
+    row-gap: 3px;
+    align-items: center;
+  }
+
+  .dot {
+    grid-area: dot;
+  }
+
+  .row__main {
+    grid-area: title;
+  }
+
+  .row__title-text {
+    white-space: normal;
+  }
+
+  .row__when {
+    grid-area: when;
+    text-align: left;
+  }
+
+  .row__actions {
+    grid-area: actions;
+    opacity: 1;
+  }
+}
+
+/* ---------- admin nav ---------- */
+
+.brand--with-nav {
+  margin-right: 20px;
+}
+
+.topbar__nav {
+  display: flex;
+  gap: 2px;
+  margin-right: auto;
+}
+
+.navlink {
+  padding: 5px 10px;
+  border-radius: var(--r);
+  color: var(--ink-3);
+  text-decoration: none;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+
+.navlink:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.navlink--active {
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+}
+
+.page__lead {
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  max-width: 65ch;
+}
+
+/* Non-interactive row title, for lists whose rows aren't links. */
+.row__name {
+  font-size: var(--t-base);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.row__tag {
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+/* Admin lists have no hover-to-reveal: the actions are the point of the screen. */
+.row__actions--always {
+  opacity: 1;
+}
+
+/* Rows with no status dot still align with the dotted lists on other screens. */
+.row--plain {
+  padding-left: 8px;
+}
+
+/* Two lines plus an expandable panel need more air than a one-line document row.
+   The top rule gives the list a defined start, the job a group heading does on
+   the other screens. */
+.rows--spaced {
+  margin-top: 28px;
+  border-top: 1px solid var(--line);
+}
+
+.rows--spaced .row {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+/* Lets an editing panel span the full width beneath the row it belongs to. */
+.row--stacked {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "main actions"
+    "panel panel";
+  align-items: start;
+  row-gap: 14px;
+}
+
+.row--stacked .row__main {
+  grid-area: main;
+}
+
+.row--stacked .row__actions {
+  grid-area: actions;
+}
+
+.row__panel {
+  grid-area: panel;
+}
+
+/* ---------- pickers ---------- */
+
+.assign {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.disclosure--inline {
+  margin-top: 0;
+  align-self: flex-start;
+  font-weight: 500;
+}
+
+.picker {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.picker__well {
+  margin-top: 8px;
+  max-height: 168px;
+  overflow-y: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  padding: 4px;
+}
+
+.picker__section {
+  margin: 6px 0 2px;
+  padding: 0 8px;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.picker__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.picker__row:hover {
+  background: var(--sunken);
+}
+
+.picker__row input {
+  accent-color: var(--brand);
+  margin: 0;
+}
+
+.picker__meta {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+}
+
+/* ---------- invite / reset handoff ---------- */
+
+/* ---------- inline forms ----------
+   Progressive disclosure under the page head, closed by a hairline rather than
+   wrapped in a card. Admin screens are visited rarely; a permanently expanded
+   form would occupy the top third of the page to be used once a month. */
+
+.inline-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.inline-form .field {
+  flex: 1;
+  min-width: 11rem;
+}
+
+/* A two-option select has no business being as wide as an email address. */
+/* Wide enough for "Administrador" plus the native select chevron — at 8.5rem
+   the longest option was clipped. */
+.inline-form .field--narrow {
+  flex: 0 0 10.5rem;
+  min-width: 0;
+}
+
+/* A link that could not reach the clipboard, shown where it can be selected. */
+.input--link {
+  margin-top: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+}
+
+.login__link {
+  align-self: center;
+  font-size: var(--t-sm);
+  color: var(--ink-3);
+  text-decoration: none;
+}
+
+.login__link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+@media (max-width: 34rem) {
+  /* Admin rows carry no status dot and no due date, so the document-row grid
+     defined earlier does not describe them. Stack the actions under the name
+     instead of squeezing them beside a long email address. */
+  .row--plain,
+  .row--stacked {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "main"
+      "actions"
+      "panel";
+    row-gap: 10px;
+    align-items: start;
+  }
+
+  .row--plain .row__main,
+  .row--stacked .row__main {
+    grid-area: main;
+  }
+
+  .row--plain .row__actions,
+  .row--stacked .row__actions {
+    grid-area: actions;
+    justify-content: flex-start;
+  }
+
+  .row--plain .row__panel,
+  .row--stacked .row__panel {
+    grid-area: panel;
+  }
+
+  /* An address has no spaces to break at; let it wrap anywhere rather than
+     push the whole page wider than the screen. */
+  .row__meta {
+    overflow-wrap: anywhere;
+  }
+
+  .inline-form .field,
+  .inline-form .field--narrow {
+    flex: 1 1 100%;
+  }
+}
+
+@media (max-width: 34rem) {
+  /* The admin nav does not fit on one line beside the brand and the sign-out
+     control on a phone. Let the bar wrap and give the nav its own row rather
+     than letting it push the header off-screen. */
+  .topbar__inner {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    row-gap: 6px;
+  }
+
+  .brand--with-nav {
+    margin-right: auto;
+  }
+
+  .topbar__nav {
+    order: 3;
+    flex-basis: 100%;
+    margin-right: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .topbar__nav::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ---------- view switch + calendar bar ---------- */
+
+.viewbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+}
+
+/* A segmented control: two states of one thing, so they share a border rather
+   than floating apart as separate buttons would. */
+.switch {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  overflow: hidden;
+  flex: none;
+}
+
+.switch__btn {
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  padding: 6px 14px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+
+.switch__btn:last-child {
+  border-right: 0;
+}
+
+.switch__btn:hover:not(.is-active) {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.switch__btn.is-active {
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+
+.switch--small .switch__btn {
+  padding: 5px 11px;
+  font-size: var(--t-xs);
+}
+
+.calbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.calbar__title {
+  min-width: 11rem;
+  font-weight: 600;
+  font-size: var(--t-base);
+}
+
+/* es-AR gives "agosto de 2026" in lowercase. Only the first letter is raised —
+   `capitalize` would also raise the "de" and give "Agosto De 2026". */
+.calbar__title::first-letter {
+  text-transform: uppercase;
+}
+
+/* ---------- toolbar: rubro filter beside the search ---------- */
+
+.toolbar--split {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.field--inline {
+  flex: 0 0 14rem;
+}
+
+.field--grow {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.field-row {
+  display: flex;
+  gap: 12px;
+}
+
+.field-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- recurrence ---------- */
+
+.repeat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.repeat__lead {
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+}
+
+.input--tiny {
+  width: 4.5rem;
+  flex: none;
+}
+
+.input--short {
+  width: 7rem;
+  flex: none;
+}
+
+.picker__row--flush {
+  padding-left: 0;
+}
+
+.picker__row--flush:hover {
+  background: transparent;
+}
+
+.dialog__lead {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+
+/* ---------- sub-rubros panel ---------- */
+
+.sublist {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.sublist__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-sm);
+}
+
+.sublist__row--empty {
+  color: var(--ink-3);
+  justify-content: flex-start;
+}
+
+.sublist__name {
+  font-weight: 500;
+}
+
+.sublist__meta {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+}
+
+.inline-form--tight {
+  margin-top: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* ---------- calendar ----------
+   The colours are the same four bands the list uses; here they arrive through
+   the band--* classes on each pill rather than on a row. */
+
+.calendar {
+  margin-top: 28px;
+}
+
+.calendar__weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.calendar__weekdays span {
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-left: 2px;
+}
+
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 7.5rem;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  min-width: 0;
+}
+
+/* Days borrowed from the neighbouring months stay visible but recede: a blank
+   cell reads as "nothing due", which is a different statement. */
+.day--outside {
+  background: var(--canvas);
+}
+
+.day--outside .day__number {
+  color: var(--ink-3);
+}
+
+.day--today {
+  border-color: var(--brand);
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+.day__head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.day__weekday {
+  display: none;
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.day__number {
+  margin-left: auto;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.day__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pill {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+  border-left: 3px solid var(--band-dot, var(--line-strong));
+  border-radius: 4px;
+  background: var(--band-soft, var(--sunken));
+  min-width: 0;
+}
+
+.pill__title {
+  font-size: var(--t-xs);
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pill__meta {
+  font-size: 0.6875rem;
+  color: var(--band, var(--ink-3));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.day__more {
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: 500;
+  text-align: left;
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  padding: 2px 0 0;
+  cursor: pointer;
+}
+
+.day__more:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+/* The week view is seven equal columns on a desktop... */
+.calendar--week .day {
+  min-height: 11rem;
+}
+
+.calendar--week .day__weekday {
+  display: inline;
+}
+
+.calendar--week .day__head {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 5px;
+}
+
+@media (max-width: 44rem) {
+  /* ...and a stack of seven days on a phone, where seven columns would give each
+     one about 50px — narrower than any invoice name. The month grid is not
+     offered at this width at all; WorkspacePage forces the week view. */
+  .calendar__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar__weekdays {
+    display: none;
+  }
+
+  .day {
+    min-height: 0;
+  }
+
+  .calendar--week .day {
+    min-height: 0;
+  }
+
+  .day__weekday {
+    display: inline;
+  }
+
+  .calbar {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .calbar__title {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .field--inline {
+    flex: 1 1 100%;
+  }
+}
+
+/* ---------- inline rename ----------
+   One short string being edited in place. A dialog for a single field would be
+   heavier than the edit itself. */
+
+.rename {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.rename .input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+/* Your own name in the topbar is the way into your profile — the only
+   self-service the app has, so it should not look like a heavier control. */
+.topbar__user--button {
+  font: inherit;
+  font-size: var(--t-sm);
+  background: none;
+  border: 0;
+  padding: 4px 6px;
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+
+.topbar__user--button:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.field__optional {
+  font-weight: 400;
+  color: var(--ink-3);
+}
