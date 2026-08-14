@@ -5,7 +5,12 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { deriveBrandRamp, fetchBranding, parseTenantFromHostname } from "../src/index.ts";
+import {
+  applyBranding,
+  deriveBrandRamp,
+  fetchBranding,
+  parseTenantFromHostname,
+} from "../src/index.ts";
 
 /** countdown's real configuration: the domain label is NOT the module slug. */
 const OPTS = { domainLabel: "vencimientos", search: "" };
@@ -151,10 +156,149 @@ const BODY = {
     slug: "acme",
     displayName: "Acme",
     brandColor: "#018445",
+    accentColor: "#ffd400",
     logoUrl: "https://cdn.example.test/acme.png",
     loginMessage: "Bienvenido",
   },
 };
+
+/** `readBranding` is internal; `fetchBranding` is how the boot sequence sees it. */
+async function resolveBranding(data: Record<string, unknown>) {
+  const restore = stubFetch(
+    async () => new Response(JSON.stringify({ success: true, data }), { status: 200 }),
+  );
+  try {
+    const result = await fetchBranding("", "countdown", "acme");
+    assert.equal(result.status, "ok");
+    return result.status === "ok" ? result.branding : null;
+  } finally {
+    restore();
+  }
+}
+
+const BASE = {
+  companyUuid: "c0ffee00-0000-4000-8000-000000000001",
+  slug: "acme",
+  displayName: "Acme",
+  brandColor: "#018445",
+  logoUrl: null,
+  loginMessage: null,
+};
+
+const BRAND_PROPERTIES = [
+  "--brand",
+  "--brand-strong",
+  "--brand-press",
+  "--brand-soft",
+  "--brand-tint",
+  "--brand-ink",
+];
+const ACCENT_PROPERTIES = [
+  "--accent",
+  "--accent-strong",
+  "--accent-press",
+  "--accent-soft",
+  "--accent-tint",
+  "--accent-ink",
+];
+
+/**
+ * The smallest `document` `applyBranding` can paint onto: no jsdom, no
+ * dependency (the package contract at src/index.ts:13).
+ */
+function stubDocument(): { properties: Record<string, string>; restore: () => void } {
+  const properties: Record<string, string> = {};
+  const head = { appendChild: () => undefined };
+  const documentStub = {
+    title: "",
+    head,
+    documentElement: {
+      style: {
+        setProperty: (name: string, value: string) => {
+          properties[name] = value;
+        },
+      },
+    },
+    querySelector: () => null,
+    createElement: () => ({ name: "", content: "" }),
+  };
+  const original = (globalThis as { document?: unknown }).document;
+  (globalThis as { document?: unknown }).document = documentStub;
+  return {
+    properties,
+    restore: () => {
+      (globalThis as { document?: unknown }).document = original;
+    },
+  };
+}
+
+function paint(branding: Parameters<typeof applyBranding>[0]): Record<string, string> {
+  const { properties, restore } = stubDocument();
+  try {
+    applyBranding(branding);
+    return properties;
+  } finally {
+    restore();
+  }
+}
+
+test("readBranding falls the accent back to the brand colour (D-5)", async () => {
+  assert.equal((await resolveBranding({ ...BASE }))?.accentColor, "#018445");
+  assert.equal((await resolveBranding({ ...BASE, accentColor: "" }))?.accentColor, "#018445");
+  assert.equal((await resolveBranding({ ...BASE, accentColor: "red" }))?.accentColor, "#018445");
+  assert.equal((await resolveBranding({ ...BASE, accentColor: "#12345" }))?.accentColor, "#018445");
+  assert.equal((await resolveBranding({ ...BASE, accentColor: 42 }))?.accentColor, "#018445");
+});
+
+test("readBranding keeps a valid accent", async () => {
+  const branding = await resolveBranding({ ...BASE, accentColor: "#ffd400" });
+  assert.equal(branding?.brandColor, "#018445");
+  assert.equal(branding?.accentColor, "#ffd400");
+});
+
+test("readBranding: a null brand colour leaves the accent null too", async () => {
+  const branding = await resolveBranding({ ...BASE, brandColor: null });
+  assert.equal(branding?.brandColor, null);
+  assert.equal(branding?.accentColor, null);
+});
+
+test("applyBranding: with no accent the six accent values equal the six brand values", () => {
+  const properties = paint({ ...BASE, accentColor: null } as Parameters<typeof applyBranding>[0]);
+  for (let i = 0; i < BRAND_PROPERTIES.length; i += 1) {
+    assert.equal(properties[ACCENT_PROPERTIES[i]], properties[BRAND_PROPERTIES[i]]);
+  }
+  assert.equal(properties["--accent"], "#018445");
+  assert.equal(properties["--accent-ink"], "#ffffff");
+});
+
+test("applyBranding: a distinct accent gets its own ramp and its own ink", () => {
+  const properties = paint({
+    ...BASE,
+    accentColor: "#ffd400",
+  } as Parameters<typeof applyBranding>[0]);
+  assert.equal(properties["--brand"], "#018445");
+  assert.equal(properties["--accent"], "#ffd400");
+  assert.notEqual(properties["--accent"], properties["--brand"]);
+  assert.equal(properties["--accent-ink"], "#1a1a1a");
+  assert.deepEqual(
+    ACCENT_PROPERTIES.map((p) => properties[p]),
+    (() => {
+      const ramp = deriveBrandRamp("#ffd400");
+      return [ramp?.brand, ramp?.strong, ramp?.press, ramp?.soft, ramp?.tint, ramp?.ink];
+    })(),
+  );
+});
+
+test("applyBranding: an invalid accent never reaches the document (D-5 handled upstream)", async () => {
+  // The reader already collapsed "#12345" onto the brand colour, so painting
+  // the resolved branding yields the brand ramp in both halves.
+  const branding = await resolveBranding({ ...BASE, accentColor: "#12345" });
+  assert.notEqual(branding, null);
+  const properties = paint(branding as Parameters<typeof applyBranding>[0]);
+  for (let i = 0; i < BRAND_PROPERTIES.length; i += 1) {
+    assert.equal(properties[ACCENT_PROPERTIES[i]], properties[BRAND_PROPERTIES[i]]);
+  }
+});
 
 test("fetchBranding: 200 → ok", async () => {
   const restore = stubFetch(async () => new Response(JSON.stringify(BODY), { status: 200 }));

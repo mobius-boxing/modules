@@ -21,6 +21,13 @@ export interface WhitelabelBranding {
   displayName: string;
   /** `#rrggbb`, or null when the tenant has no colour (CSS defaults stand). */
   brandColor: string | null;
+  /**
+   * Secondary `#rrggbb` driving the `--accent*` ramp. A tenant that never
+   * picked one gets `brandColor` here, so the accent ramp collapses onto the
+   * brand ramp and nothing changes visually (D-3). Null only when the brand
+   * colour is null too, and then the CSS defaults stand for both.
+   */
+  accentColor: string | null;
   /** Absolute URL, or null. */
   logoUrl: string | null;
   /** Extra line for the login screen, or null. */
@@ -128,11 +135,19 @@ function readBranding(body: unknown): WhitelabelBranding | null {
   if (companyUuid === null || displayName === null) return null;
 
   const brandColor = readString(record.brandColor);
+  const brand = brandColor !== null && parseHex(brandColor) !== null ? brandColor : null;
+
+  // D-5 re-checked client-side: an older API that sends no accent, or a
+  // malformed one, degrades to today's appearance rather than to an unstyled
+  // one, because the accent below falls back to `brand` — which the line above
+  // has already validated.
+  const accentColor = readString(record.accentColor);
   return {
     companyUuid,
     slug: readString(record.slug) ?? "",
     displayName,
-    brandColor: brandColor !== null && parseHex(brandColor) !== null ? brandColor : null,
+    brandColor: brand,
+    accentColor: accentColor !== null && parseHex(accentColor) !== null ? accentColor : brand,
     logoUrl: readString(record.logoUrl),
     loginMessage: readString(record.loginMessage),
   };
@@ -281,12 +296,28 @@ function setThemeColor(color: string): void {
 }
 
 /**
- * Paint the tenant onto the document: brand ramp, title, theme colour.
+ * Paint the tenant onto the document: brand ramp, accent ramp, title, theme
+ * colour.
  *
  * The custom properties go on `document.documentElement` as INLINE styles, so
  * they beat the `:root { … }` defaults the module's stylesheet ships without
- * needing `!important` or a second stylesheet. A tenant with no (or a broken)
- * brandColor simply leaves those defaults in place.
+ * needing `!important` or a second stylesheet.
+ *
+ * The two ramps are painted INDEPENDENTLY of each other's VALIDITY: an unusable
+ * brandColor leaves every `--brand*` at its stylesheet default while a usable
+ * accentColor still writes the six `--accent*`, and vice versa.
+ *
+ * Note the asymmetry the fallback creates. A NULL accentColor is replaced by
+ * brandColor (D-3), so the accent ramp is painted FROM the brand colour and the
+ * `--accent*` defaults are not what you see. A MALFORMED one is not replaced,
+ * and leaves those defaults standing.
+ *
+ * `readBranding` never hands this function a malformed accent (it collapses one
+ * onto the brand value first), but it CAN hand it a null brandColor beside a
+ * live accentColor, in all four ways the API's brandColor can fail: absent,
+ * null, empty or malformed. D-5 makes that a legal tenant state, so both halves
+ * are guarded here. With neither colour usable nothing is painted and both sets
+ * of defaults stand.
  */
 export function applyBranding(
   branding: WhitelabelBranding,
@@ -303,7 +334,24 @@ export function applyBranding(
     root.style.setProperty("--brand-soft", ramp.soft);
     root.style.setProperty("--brand-tint", ramp.tint);
     root.style.setProperty("--brand-ink", ramp.ink);
+    // The BRAND ramp, never the accent: this is the browser chrome colour and
+    // it stays the tenant's primary identity.
     setThemeColor(ramp.brand);
+  }
+
+  // Unset accent means "same as the brand colour" (D-3), so the same ramp
+  // function runs twice on the same input and the twelve properties match
+  // value for value until a tenant picks a second colour.
+  const accentSource = branding.accentColor ?? branding.brandColor;
+  const accentRamp = accentSource === null ? null : deriveBrandRamp(accentSource);
+  if (accentRamp !== null) {
+    const root = document.documentElement;
+    root.style.setProperty("--accent", accentRamp.brand);
+    root.style.setProperty("--accent-strong", accentRamp.strong);
+    root.style.setProperty("--accent-press", accentRamp.press);
+    root.style.setProperty("--accent-soft", accentRamp.soft);
+    root.style.setProperty("--accent-tint", accentRamp.tint);
+    root.style.setProperty("--accent-ink", accentRamp.ink);
   }
 
   const name = branding.displayName.trim();

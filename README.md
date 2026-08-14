@@ -76,7 +76,7 @@ domain, and anything that is not a DNS-safe label (lowercase alnum + hyphens,
 
 ```
 GET {API}/api/public/whitelabel/{module-slug}/{client}
- → 200 {success:true, data:{companyUuid, slug, displayName, brandColor, logoUrl, loginMessage}}
+ → 200 {success:true, data:{companyUuid, slug, displayName, brandColor, accentColor, logoUrl, loginMessage}}
  → 404 for an unknown or disabled tenant (generic — it confirms nothing)
 ```
 
@@ -86,14 +86,30 @@ and the three are **not** interchangeable: `unknown` is the address being wrong
 unreachable (load the app with default branding — a branding blip must not
 brick the SPA). No tenant in the address at all is also just default branding.
 
-**Colours.** The API sends ONE colour (`brandColor`, `#rrggbb`);
-`applyBranding()` derives the hover/press/soft/tint ramp from it in JS and sets
-`--brand*` as inline custom properties on `<html>`, which override the
-`:root { … }` defaults the module's stylesheet ships. It also sets
-`document.title` and the `theme-color` meta. Consequence for module CSS: every
-brand-coloured rule reads `var(--brand…)` — a hardcoded brand literal is a rule
-the whitelabel layer cannot reach. Semantic colours (status bands, alerts) are
-deliberately NOT derived from the brand.
+**Colours.** The API sends TWO colours, both `#rrggbb`: `brandColor` (primary
+identity — wordmark, primary actions) and `accentColor` (secondary actions,
+chips, selected/active states, highlights). `applyBranding()` runs the SAME
+derivation over each and sets twelve inline custom properties on `<html>`,
+which override the `:root { … }` defaults the module's stylesheet ships:
+
+```
+--brand  --brand-strong  --brand-press  --brand-soft  --brand-tint  --brand-ink
+--accent --accent-strong --accent-press --accent-soft --accent-tint --accent-ink
+```
+
+`accentColor` is OPTIONAL for a tenant. When it is unset (or malformed) the
+endpoint and `readBranding()` both fall back to `brandColor`, so the accent ramp
+collapses onto the brand ramp value for value and a tenant that never picked a
+second colour looks exactly as it did before. Never treat a missing accent as
+"no accent": always read `var(--accent…)`, which is always populated. A company
+may also set only `accentColor`, in which case the brand resolves to the default
+`#018445`.
+
+`applyBranding()` also sets `document.title` and the `theme-color` meta — the
+latter from the BRAND ramp, never the accent. Consequence for module CSS: every
+brand- or accent-coloured rule reads `var(--brand…)` / `var(--accent…)` — a
+hardcoded colour literal is a rule the whitelabel layer cannot reach. Semantic
+colours (status bands, alerts) are deliberately NOT derived from either.
 
 **Logos** come from the API as absolute URLs. Never ship a client's logo as a
 module asset.

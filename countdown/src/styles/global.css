@@ -29,6 +29,20 @@
      applyBranding() flips it to near-black for a light tenant colour. */
   --brand-ink: #fff;
 
+  /* The tenant's second colour — DEFAULTS ONLY, same contract as --brand above.
+     applyBranding() derives this whole ramp from accentColor and sets it as
+     inline custom properties on <html>, which override these. A tenant that
+     never picked an accent gets the brand ramp here, value for value, which is
+     why these defaults are the brand defaults verbatim. */
+  --accent: oklch(0.538 0.138 153);
+  --accent-strong: oklch(0.475 0.126 153);
+  --accent-press: oklch(0.425 0.114 153);
+  --accent-soft: oklch(0.958 0.028 155);
+  /* Secondary text/marks sitting ON the accent colour. */
+  --accent-tint: oklch(0.92 0.03 155);
+  /* Primary text/icons ON the accent colour. */
+  --accent-ink: #fff;
+
   /* The four due-date bands. Each needs three values: `-text` clears AA on the
      warm canvas, `-dot` is tuned to read as a traffic light at 13px, and `-soft`
      tints the whole strip. They differ because accessible yellow text is olive,
