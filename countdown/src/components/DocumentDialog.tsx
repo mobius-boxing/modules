@@ -30,9 +30,11 @@ const DEFAULT_REMINDER_DAYS = "7";
  * document or for one already filed.
  *
  * This is more than the three fields PRODUCT.md argues for, and deliberately so:
- * the client wants every document classified, so rubro is required rather than
- * folded away. Repetition stays optional and sits last, because most documents
- * do not repeat.
+ * the client wants every document classified, so rubro sits in front rather than
+ * folded away — but it is optional, and can be taken off again: a company that
+ * has not finished classifying its paperwork must still be able to load an
+ * expiration. Repetition stays optional and sits last, because most documents do
+ * not repeat.
  *
  * One dialog serves both modes rather than a second form: the fields are the
  * same, and two components would drift. Editing covers exactly what the update
@@ -169,19 +171,17 @@ export function DocumentDialog({
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!categoryUuid) {
-      setError("Elegí un rubro.");
-      return;
-    }
-
     setSaving(true);
     setError(null);
     try {
       const fields = {
         title: title.trim(),
         dueDate,
-        category: categoryUuid,
-        ...(subcategoryUuid ? { subcategory: subcategoryUuid } : {}),
+        // Both keys, always, in create and in edit: `null` is the API's
+        // clearing sentinel, and "" would mean "no change" on a patch — which
+        // is exactly how a rubro became impossible to take off again.
+        category: categoryUuid || null,
+        subcategory: subcategoryUuid || null,
         ...(repeats
           ? { recurrenceCount: Number(recurrenceCount), recurrenceUnit }
           : {}),
@@ -260,11 +260,11 @@ export function DocumentDialog({
                 className="input"
                 name="category"
                 data-testid="document-category"
-                required
                 value={categoryUuid}
                 onChange={(event) => pickCategory(event.target.value)}
               >
-                <option value="">Elegir…</option>
+                {/* An explicit choice, not an unfilled required field. */}
+                <option value="">Sin rubro</option>
                 {categories.map((category) => (
                   <option key={category.uuid} value={category.uuid}>
                     {category.name}
@@ -299,8 +299,8 @@ export function DocumentDialog({
 
           {categories.length === 0 ? (
             <p className="field__hint">
-              Todavía no hay rubros. Un administrador tiene que crearlos en Rubros antes de cargar
-              un vencimiento.
+              Todavía no hay rubros: un administrador puede crearlos en Rubros. Igual podés cargar
+              el vencimiento sin rubro y clasificarlo después.
             </p>
           ) : null}
 
@@ -433,7 +433,7 @@ export function DocumentDialog({
                   />
                   <PeoplePicker
                     label="Recibe avisos"
-                    hint="Reciben un único aviso diario con todos sus vencimientos, desde los días de anticipación de cada uno. Si no elegís a nadie, los recibe quien lo cargó."
+                    hint="Reciben un único aviso diario con todos sus vencimientos, desde los días de anticipación de cada uno. Si no elegís a nadie, los recibe todo el equipo de la empresa."
                     people={people}
                     groups={groups}
                     selectedUsers={watchers.users}
@@ -459,7 +459,7 @@ export function DocumentDialog({
           <button
             type="submit"
             className="btn btn--primary"
-            disabled={saving || categories.length === 0}
+            disabled={saving}
             data-testid="document-submit"
           >
             {saving ? "Guardando…" : "Guardar"}
