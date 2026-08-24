@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { BrandingProvider } from "./context/BrandingContext";
 import "./styles/global.css";
+import "./styles/gold.css";
 
 const container = document.getElementById("root");
 if (!container) throw new Error("No se encontró el contenedor #root");
