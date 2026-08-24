@@ -31,12 +31,18 @@
   --gd-snap: cubic-bezier(0.22, 1, 0.36, 1);
   --gd-out: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* Graphite shell. Neutral by construction so it can never collide with a
-     tenant's brand hue. */
-  --gd-shell: oklch(0.205 0.008 var(--hue));
-  --gd-shell-2: oklch(0.262 0.009 var(--hue));
-  --gd-shell-ink: oklch(0.965 0.004 var(--hue));
-  --gd-shell-ink-2: oklch(0.72 0.008 var(--hue));
+  /* Graphite shell — DEFAULTS ONLY, same contract as --brand above.
+     applyBranding() derives this whole group from the tenant's shellColor and
+     sets it inline on <html>, which overrides these. The foregrounds are
+     derived rather than fixed because a tenant may pick a pale chrome, and
+     white-on-pale is unreadable — so never hardcode a light-on-dark value
+     below, always go through these four.
+     Kept in sync with DEFAULT_SHELL_COLOR (#191713) in mobius-api's
+     src/utils/whitelabel-defaults.ts. */
+  --gd-shell: #191713;
+  --gd-shell-ink: #f5f3ef;
+  --gd-shell-ink-2: #a8a29a;
+  --gd-shell-line: rgba(255, 255, 255, 0.12);
 }
 
 /* ── Shell: the top bar becomes a command bar ────────────────────────────── */
@@ -84,7 +90,7 @@
 }
 
 .navlink:hover {
-  background: oklch(1 0 0 / 0.08);
+  background: var(--gd-shell-line);
   color: var(--gd-shell-ink);
 }
 
@@ -111,7 +117,7 @@
 }
 
 .topbar .btn--quiet:hover:not(:disabled) {
-  background: oklch(1 0 0 / 0.1);
+  background: var(--gd-shell-line);
   color: var(--gd-shell-ink);
 }
 

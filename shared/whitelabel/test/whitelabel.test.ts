@@ -362,3 +362,45 @@ test("fetchBranding: calls the public path with the module slug, no auth", async
     restore();
   }
 });
+
+// ---------------------------------------------------------------------------
+// shellColor / canvasColor — the chrome and the page background.
+// ---------------------------------------------------------------------------
+
+test("applyBranding: a dark shell colour gets light inks", () => {
+  const props = paint({ ...BASE, shellColor: "#191713" } as never);
+  assert.equal(props["--gd-shell"], "#191713");
+  // Light foregrounds, because the chrome is dark.
+  assert.equal(props["--gd-shell-ink"], "#f5f3ef");
+  assert.equal(props["--gd-shell-ink-2"], "#a8a29a");
+  assert.equal(props["--gd-shell-line"], "rgba(255,255,255,0.12)");
+});
+
+test("applyBranding: a LIGHT shell colour flips the inks — no white on white", () => {
+  const props = paint({ ...BASE, shellColor: "#fef9c3" } as never);
+  assert.equal(props["--gd-shell"], "#fef9c3");
+  assert.equal(props["--gd-shell-ink"], "#14120f");
+  assert.equal(props["--gd-shell-ink-2"], "#57534e");
+  assert.equal(props["--gd-shell-line"], "rgba(0,0,0,0.12)");
+});
+
+test("applyBranding: canvasColor paints only the background, never the ink", () => {
+  const props = paint({ ...BASE, canvasColor: "#f9f7f4" } as never);
+  assert.equal(props["--canvas"], "#f9f7f4");
+  assert.equal(props["--ink"], undefined);
+});
+
+test("applyBranding: omitted or malformed chrome colours are ignored, not thrown on", () => {
+  // Absent entirely — an older API, which must not brick the SPA.
+  assert.doesNotThrow(() => paint({ ...BASE } as never));
+  assert.equal(paint({ ...BASE } as never)["--gd-shell"], undefined);
+  // Present but junk — never reaches a style attribute. Note "#fff" is NOT in
+  // this list: parseHex expands 3-digit shorthand, so the client accepts it
+  // even though CompanyBrandingInputDTO only writes #rrggbb. The client being
+  // the more permissive of the two is the right way round.
+  for (const bad of ["red", "#12345", "javascript:x", 42, null]) {
+    const props = paint({ ...BASE, shellColor: bad, canvasColor: bad } as never);
+    assert.equal(props["--gd-shell"], undefined);
+    assert.equal(props["--canvas"], undefined);
+  }
+});
