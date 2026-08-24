@@ -1,0 +1,893 @@
+/* node-files — the same design system countdown ships (tokens, buttons, rows,
+   native dialogs), minus the parts that only mean something to a due-date app.
+   Colour here is almost entirely neutral: the one chromatic control is the
+   brand, plus a small set of semantic states for a run's lifecycle. */
+
+:root {
+  --hue: 82; /* warm, paper-side of neutral */
+
+  --canvas: oklch(0.977 0.005 var(--hue));
+  --surface: oklch(0.995 0.002 var(--hue));
+  --sunken: oklch(0.955 0.006 var(--hue));
+  --line: oklch(0.902 0.007 var(--hue));
+  --line-strong: oklch(0.845 0.009 var(--hue));
+
+  --ink: oklch(0.235 0.012 var(--hue));
+  --ink-2: oklch(0.445 0.011 var(--hue));
+  --ink-3: oklch(0.6 0.01 var(--hue));
+
+  /* Module green (#018445) — DEFAULTS ONLY. applyBranding()
+     (shared/whitelabel) derives this whole ramp from the tenant's brandColor
+     and sets it as inline custom properties on <html>, which override these.
+     So: never hardcode a brand green below, always go through these or the
+     override does nothing. */
+  --brand: oklch(0.538 0.138 153);
+  --brand-strong: oklch(0.475 0.126 153);
+  --brand-press: oklch(0.425 0.114 153);
+  --brand-soft: oklch(0.958 0.028 155);
+  /* Secondary text/marks sitting ON the brand colour. */
+  --brand-tint: oklch(0.92 0.03 155);
+  /* Primary text/icons ON the brand colour. White suits the dark module green;
+     applyBranding() flips it to near-black for a light tenant colour. */
+  --brand-ink: #fff;
+
+  /* The tenant's second colour — DEFAULTS ONLY, same contract as --brand.
+     A tenant that never picked an accent gets the brand ramp here, value for
+     value, which is why these defaults are the brand defaults verbatim. */
+  --accent: oklch(0.538 0.138 153);
+  --accent-strong: oklch(0.475 0.126 153);
+  --accent-press: oklch(0.425 0.114 153);
+  --accent-soft: oklch(0.958 0.028 155);
+  --accent-tint: oklch(0.92 0.03 155);
+  --accent-ink: #fff;
+
+  /* Semantic states — deliberately NOT derived from the tenant's colours: a
+     failed run has to read as failed whatever the customer's brand is. Each
+     needs a text value that clears AA on the warm canvas and a soft tint to
+     sit on. */
+  --danger: oklch(0.525 0.185 27);
+  --danger-soft: oklch(0.958 0.026 32);
+
+  --warn: oklch(0.545 0.145 52);
+  --warn-soft: oklch(0.962 0.03 62);
+
+  --ok: oklch(0.538 0.138 153);
+  --ok-soft: oklch(0.962 0.024 155);
+
+  --info: oklch(0.5 0.11 255);
+  --info-soft: oklch(0.958 0.026 255);
+
+  --idle: oklch(0.6 0.01 var(--hue));
+  --idle-soft: oklch(0.945 0.005 var(--hue));
+
+  --focus: oklch(0.55 0.15 255);
+
+  --t-xs: 0.75rem;
+  --t-sm: 0.8125rem;
+  --t-base: 0.9375rem;
+  --t-md: 1.0625rem;
+  --t-lg: 1.375rem;
+
+  --r: 6px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --fast: 160ms;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --fast: 1ms;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--canvas);
+}
+
+body {
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--t-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Counts and token totals must not reflow as they change. */
+time,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- shell ---------- */
+
+.topbar {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.topbar__inner {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+}
+
+.brand--with-nav {
+  margin-right: 20px;
+}
+
+/* The tenant's logo, bounded by the 52px bar and never stretched: an arbitrary
+   customer upload must not be able to push the header around. */
+.brand__logo {
+  display: block;
+  max-height: 30px;
+  max-width: 180px;
+  width: auto;
+  object-fit: contain;
+}
+
+.brand__wordmark {
+  display: block;
+  font-size: var(--t-md);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--brand);
+}
+
+.topbar__nav {
+  display: flex;
+  gap: 2px;
+  margin-right: auto;
+}
+
+.navlink {
+  padding: 5px 10px;
+  border-radius: var(--r);
+  color: var(--ink-3);
+  text-decoration: none;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+
+.navlink:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.navlink--active {
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+}
+
+.topbar__user {
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+}
+
+.page {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 40px 24px 96px;
+}
+
+/* Full-page wait, before the shell exists (session check, module gate). */
+.page-loading {
+  padding: 64px 24px;
+  text-align: center;
+  color: var(--ink-3);
+}
+
+.page__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 28px;
+}
+
+.page__head:first-child {
+  margin-top: 0;
+}
+
+.page__title {
+  font-size: var(--t-lg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 auto 0 0;
+}
+
+.page__count {
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+}
+
+.page__lead {
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  max-width: 65ch;
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  padding: 7px 13px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-block;
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--sunken);
+}
+
+.btn:active:not(:disabled) {
+  background: var(--line);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Primary carries the brand colour — the one chromatic control on screen. */
+.btn--primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-ink);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--brand-strong);
+  border-color: var(--brand-strong);
+}
+
+.btn--primary:active:not(:disabled) {
+  background: var(--brand-press);
+  border-color: var(--brand-press);
+}
+
+.btn--quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-2);
+  padding: 5px 8px;
+}
+
+.btn--quiet:hover:not(:disabled) {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+/* Neutral at rest; red on hover and once armed for confirmation, which is when
+   the warning is actually doing work. */
+.btn--danger {
+  color: var(--ink-2);
+}
+
+.btn--danger:hover:not(:disabled),
+.btn--danger.is-armed {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/* ---------- filters ---------- */
+
+.toolbar {
+  margin: 20px 0 0;
+  max-width: 26rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 20px 0 0;
+}
+
+.filter {
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease);
+}
+
+.filter:hover:not(.is-active) {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.filter.is-active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-ink);
+}
+
+/* ---------- inputs + fields ---------- */
+
+.input {
+  font: inherit;
+  font-size: var(--t-base);
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink);
+  transition: border-color var(--fast) var(--ease);
+}
+
+/* Inputs and selects compute different intrinsic heights from the same padding,
+   which knocks their labels out of line when they sit in a row. Pin both;
+   textareas keep their own height. */
+input.input,
+select.input {
+  min-height: 2.5rem;
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.input:hover {
+  border-color: oklch(0.78 0.01 var(--hue));
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.field__hint {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+}
+
+.field__optional {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+/* A row of fields that wraps rather than squeezing a select to nothing. */
+.field-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.field-row .field {
+  flex: 1;
+  min-width: 11rem;
+}
+
+.field--narrow {
+  flex: 0 0 10.5rem;
+  min-width: 0;
+}
+
+.field--grow {
+  flex: 1 1 12rem;
+}
+
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 24px;
+  max-width: 48rem;
+}
+
+/* ---------- rows ---------- */
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The top rule gives the list a defined start. */
+.rows--spaced {
+  margin-top: 28px;
+  border-top: 1px solid var(--line);
+}
+
+.rows--spaced .row {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--line);
+  transition: box-shadow var(--fast) var(--ease);
+}
+
+.row:hover {
+  box-shadow: inset 0 0 0 999px oklch(0 0 0 / 0.024);
+}
+
+.row--plain {
+  padding-left: 8px;
+}
+
+/* Lets an editing panel span the full width beneath the row it belongs to. */
+.row--stacked {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "main actions"
+    "panel panel";
+  align-items: start;
+  row-gap: 14px;
+}
+
+.row--stacked .row__main {
+  grid-area: main;
+}
+
+.row--stacked .row__actions {
+  grid-area: actions;
+}
+
+.row__main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row__name {
+  font-size: var(--t-base);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.row__tag {
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.row__meta {
+  font-size: var(--t-sm);
+  color: var(--ink-3);
+}
+
+/* An extracted value: the thing the reader came for, so it gets the ink. */
+.row__value {
+  flex: 1 1 14rem;
+  min-width: 0;
+  font-size: var(--t-base);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.row__when {
+  flex: none;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--ink-2);
+  text-align: right;
+}
+
+.row__actions {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+
+.row__actions--always {
+  opacity: 1;
+}
+
+/* ---------- run state ---------- */
+
+.state {
+  flex: none;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--idle-soft);
+  color: var(--idle);
+}
+
+.state--queued {
+  background: var(--idle-soft);
+  color: var(--idle);
+}
+
+.state--extracting {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.state--pending_review {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.state--succeeded {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.state--failed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ---------- run metadata ---------- */
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 32px;
+  margin: 24px 0 0;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.meta__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta__label {
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.meta__value {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--ink);
+}
+
+/* ---------- field schema editor ---------- */
+
+.schema {
+  margin-top: 40px;
+}
+
+/* A heading that opens a section under the page's metadata, with the air the
+   flex-row .schema__title (which sits inside its own bordered head) has no
+   room for. */
+.section-title {
+  margin: 40px 0 0;
+  font-size: var(--t-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.schema__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.schema__title {
+  margin: 0 auto 0 0;
+  font-size: var(--t-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.schema__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: field;
+}
+
+/* Each declared field is a small block of its own: three inputs on top, the
+   options and the reordering underneath. */
+.schema__row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.schema__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+  white-space: nowrap;
+  padding-bottom: 9px;
+}
+
+.schema__actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  padding-bottom: 6px;
+}
+
+/* ---------- empty + feedback ---------- */
+
+.empty {
+  margin-top: 56px;
+  padding: 48px 24px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.empty__title {
+  margin: 0 0 4px;
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.empty__hint {
+  margin: 0 auto 20px;
+  color: var(--ink-2);
+  max-width: 42ch;
+}
+
+.notice {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--r);
+  font-size: var(--t-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.skeleton {
+  height: 45px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, transparent, var(--sunken), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--sunken);
+  }
+}
+
+/* ---------- dialog ----------
+   Native <dialog>: focus trap, Escape, top layer and focus restoration all come
+   from the platform instead of hand-rolled JS that gets them subtly wrong. */
+
+dialog {
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  width: min(28rem, calc(100vw - 32px));
+  box-shadow: 0 12px 32px -8px oklch(0.235 0.012 82 / 0.18);
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+}
+
+dialog form {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 48px);
+}
+
+dialog::backdrop {
+  background: oklch(0.235 0.012 82 / 0.32);
+  animation: fade var(--fast) var(--ease);
+}
+
+dialog[open] {
+  animation: rise var(--fast) var(--ease);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog[open],
+  dialog::backdrop {
+    animation: none;
+  }
+}
+
+.dialog__head {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dialog__title {
+  margin: 0;
+  font-size: var(--t-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dialog__body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.dialog__lead {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.dialog__head,
+.dialog__foot {
+  flex: none;
+}
+
+.dialog__foot {
+  padding: 14px 20px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  background: var(--canvas);
+  border-radius: 0 0 12px 12px;
+}
+
+/* ---------- login ---------- */
+
+.login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login__card {
+  width: min(21rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The tenant's logo, whatever shape it arrives in: bounded on both axes and
+   never stretched, so a wide wordmark and a square mark both behave. */
+.login__logo {
+  align-self: flex-start;
+  max-width: 100%;
+  max-height: 56px;
+  width: auto;
+  object-fit: contain;
+}
+
+.login__brand {
+  font-size: var(--t-lg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.login__sub {
+  margin: -12px 0 4px;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+}
+
+@media (max-width: 34rem) {
+  .page {
+    padding: 28px 16px 72px;
+  }
+
+  .topbar__inner {
+    padding: 0 16px;
+  }
+
+  /* Rows here carry no status dot and no fixed right column, so stack the
+     actions under the name instead of squeezing them beside a long filename. */
+  .row,
+  .row--plain,
+  .row--stacked {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .row__when {
+    text-align: left;
+  }
+}

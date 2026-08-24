@@ -31,6 +31,7 @@ unresolved** and blocks everything session-shaped in `shared/auth`.
 |------|--------|
 | 3030 | _template |
 | 3040 | countdown |
+| 3050 | node-files |
 
 ## Add a module (checklist)
 1. **Frontend**: copy `_template/` to `<slug>/`; set the package `name` to

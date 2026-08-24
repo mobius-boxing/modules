@@ -5,7 +5,8 @@
   "workspaces": [
     "shared/*",
     "_template",
-    "countdown"
+    "countdown",
+    "node-files"
   ],
   "scripts": {
     "dev": "npm run dev -w @mobius-modules/template",
