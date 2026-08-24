@@ -586,6 +586,23 @@ select.input {
   color: var(--danger);
 }
 
+/* A run now walks a graph, so the same chip reports a NODE's turn too. Same
+   component, same words, no second vocabulary: `succeeded` and `failed` already
+   mean here what they mean on a run.
+
+   `skipped` is the branch a condition did not take — deliberately not run,
+   which is not the same as queued. It reads as further receded than idle;
+   gold.css takes that further with a token of its own. */
+.state--running {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.state--skipped {
+  background: var(--sunken);
+  color: var(--ink-3);
+}
+
 /* ---------- run metadata ---------- */
 
 .meta {
@@ -680,6 +697,204 @@ select.input {
   gap: 2px;
   margin-left: auto;
   padding-bottom: 6px;
+}
+
+/* ---------- node graph ----------
+   Structure only: the geometry the canvas, the node cards and the config panel
+   need in order to work at all. The treatment — elevation, the dot grid, edge
+   colour, the selection ring — is gold.css's, so removing that layer leaves a
+   plain but usable diagram rather than a broken one. */
+
+.graph-shell {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.graph {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.graph__palette {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.graph__palette-label {
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-right: 4px;
+}
+
+.graph__palette-empty {
+  font-size: var(--t-sm);
+  color: var(--ink-3);
+}
+
+/* React Flow measures its container, so the height has to be explicit. */
+.graph__canvas {
+  height: 26rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+/* ---------- node card ---------- */
+
+.nodecard {
+  position: relative;
+  width: 12.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: left;
+}
+
+.nodecard__type {
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.nodecard__id {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+}
+
+.nodecard__summary {
+  font-size: var(--t-xs);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.nodecard__summary--empty {
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+/* A node draws one outgoing handle per handle its type declares, spaced down
+   the right edge. The vertical position is computed in the component from the
+   count, so a type with a third branch needs no rule here; this only styles the
+   label that names a branch. */
+.nodecard__branch {
+  position: absolute;
+  right: -22px;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+/* ---------- config panel ---------- */
+
+.panel {
+  flex: 0 0 20rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  max-height: 30rem;
+  overflow-y: auto;
+}
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel__title {
+  margin: 0;
+  font-size: var(--t-base);
+  font-weight: 600;
+}
+
+.panel__id {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  margin-right: auto;
+}
+
+.panel__lead {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+}
+
+.panel__empty {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--ink-3);
+}
+
+.panel__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Three inputs, never an expression box: field, comparison, value. */
+.condition {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.condition__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.condition__row .field {
+  flex: 1 1 7rem;
+  min-width: 0;
+}
+
+/* A key/value pair: two boxes and the control that drops the row, on one line
+   even in the narrow panel. */
+.kv__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  align-items: end;
+}
+
+.kv__row .field {
+  min-width: 0;
+}
+
+.kv__remove {
+  min-width: 1.75rem;
+}
+
+@media (max-width: 60rem) {
+  .graph-shell {
+    display: block;
+  }
+
+  .panel {
+    margin-top: 16px;
+    max-height: none;
+  }
 }
 
 /* ---------- empty + feedback ---------- */

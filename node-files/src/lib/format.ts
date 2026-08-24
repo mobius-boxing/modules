@@ -1,4 +1,4 @@
-import type { RunStatus, WorkflowStatus } from "../types/api";
+import type { NodeRunStatus, RunStatus, WorkflowStatus } from "../types/api";
 
 /** Dates come from the API as ISO instants; the UI is Argentine and Spanish. */
 const DATE_TIME = new Intl.DateTimeFormat("es-AR", {
@@ -33,12 +33,38 @@ const RUN_STATUS_LABELS: Record<RunStatus, string> = {
   queued: "En cola",
   extracting: "Procesando",
   pending_review: "Para revisar",
+  running: "Ejecutando",
   succeeded: "Completada",
   failed: "Fallida",
 };
 
 export function runStatusLabel(status: string): string {
   return RUN_STATUS_LABELS[status as RunStatus] ?? status;
+}
+
+/**
+ * A node's outcome. Three words, not five: the row is written once, when the
+ * node is over, so there is no `pending` and no `running` node run. `skipped` is
+ * the branch a condition did not take.
+ */
+const NODE_RUN_STATUS_LABELS: Record<NodeRunStatus, string> = {
+  succeeded: "Completado",
+  failed: "Fallido",
+  skipped: "Omitido",
+};
+
+export function nodeRunStatusLabel(status: string): string {
+  return NODE_RUN_STATUS_LABELS[status as NodeRunStatus] ?? status;
+}
+
+/**
+ * "1,4 s" — how long a node took. The API sends `durationMs`; a skipped node
+ * never ran and has none, which prints as an em dash rather than as "0 ms".
+ */
+export function formatDuration(durationMs: number | null): string {
+  if (durationMs === null || !Number.isFinite(durationMs) || durationMs < 0) return "—";
+  if (durationMs < 1000) return `${durationMs} ms`;
+  return `${(durationMs / 1000).toLocaleString("es-AR", { maximumFractionDigits: 1 })} s`;
 }
 
 /** Token counts are the cost of a run; both halves matter, so print both. */

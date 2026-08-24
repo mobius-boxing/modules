@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError, api } from "../api/client";
+import { NodeTimeline } from "../components/NodeTimeline";
 import {
   fieldsForRun,
   formatConfidence,
@@ -56,16 +57,26 @@ export function RunDetailPage() {
   const extracted = useMemo(() => normalizeExtracted(run?.extracted), [run]);
   const fields = useMemo(() => fieldsForRun(run?.fields, extracted), [run, extracted]);
 
-  /** What the screen prints per field: the reviewed value wins once there is one. */
+  /**
+   * What the screen prints per field: the reviewed value wins once there is one.
+   *
+   * `reviewedValues` is the SAME wrapped `{value, confidence}` shape as
+   * `extracted` — `coerceReviewValues` stores it that way — so it goes through
+   * the same reader. Read as a bare value it printed "[object Object]" on every
+   * reviewed run.
+   */
+  const reviewed = useMemo(() => normalizeExtracted(run?.reviewedValues), [run]);
+
   const values = useMemo<Record<string, FieldValue>>(() => {
-    const reviewed = run?.reviewedValues ?? null;
     const result: Record<string, FieldValue> = {};
     for (const field of fields) {
       result[field.key] =
-        reviewed && field.key in reviewed ? reviewed[field.key] : (extracted[field.key]?.value ?? null);
+        field.key in reviewed
+          ? (reviewed[field.key]?.value ?? null)
+          : (extracted[field.key]?.value ?? null);
     }
     return result;
-  }, [fields, extracted, run]);
+  }, [fields, extracted, reviewed]);
 
   // The form is seeded from the run, and re-seeded whenever the run changes —
   // the screen is reachable again after a retry, and a stale draft would then
@@ -193,6 +204,11 @@ export function RunDetailPage() {
         </p>
       ) : null}
 
+      {/* Only when the run actually walked a graph. A flow that just extracts
+          fields has no node runs, and an empty timeline would read as "the
+          graph did nothing" rather than "there was no graph". */}
+      {run.nodeRuns && run.nodeRuns.length > 0 ? <NodeTimeline nodeRuns={run.nodeRuns} /> : null}
+
       {fields.length === 0 ? (
         <div className="empty" data-testid="run-values-empty">
           <h2 className="empty__title">Todavía no hay valores</h2>
@@ -254,7 +270,7 @@ export function RunDetailPage() {
                     onChange={(event) => setDraft({ ...draft, [field.key]: event.target.value })}
                   />
                 )}
-                {field.hint ? <span className="field__hint">{field.hint}</span> : null}
+                {field.description ? <span className="field__hint">{field.description}</span> : null}
                 {field.type === "list" ? (
                   <span className="field__hint">Separá los valores con comas.</span>
                 ) : null}

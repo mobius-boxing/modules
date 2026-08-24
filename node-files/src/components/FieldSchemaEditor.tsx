@@ -8,7 +8,7 @@ interface Props {
 }
 
 /** A new row starts empty: an invented key would be saved by accident. */
-const EMPTY_FIELD: WorkflowField = { key: "", label: "", type: "string", required: false, hint: "" };
+const EMPTY_FIELD: WorkflowField = { key: "", label: "", type: "string", required: false, description: "" };
 
 /**
  * The workflow's field schema — the part of a flow that Phase 1 actually has.
@@ -122,10 +122,10 @@ export function FieldSchemaEditor({ fields, onChange, disabled }: Props) {
                       type="text"
                       name={`fieldHint${index}`}
                       data-testid={`field-hint-${index}`}
-                      value={field.hint ?? ""}
+                      value={field.description ?? ""}
                       disabled={disabled}
                       placeholder="Arriba a la derecha, junto a la fecha"
-                      onChange={(event) => patch(index, { hint: event.target.value })}
+                      onChange={(event) => patch(index, { description: event.target.value })}
                     />
                   </div>
 

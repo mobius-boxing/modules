@@ -1,0 +1,827 @@
+/* ============================================================================
+   GOLD.CSS — node-files module, visual redesign
+   ----------------------------------------------------------------------------
+   Loaded after global.css (and after React Flow's base.css) in src/main.tsx.
+   Removable as one unit: deleting that one import returns the module to its
+   base appearance. That is the rollback contract.
+
+   Written for node-files' OWN selector set. countdown ships a gold layer too
+   and it is the reference for TECHNIQUE, never for contents: the two
+   global.css files have diverged (893 lines against 1596). node-files has
+   components countdown's base does not — .navlink/.topbar__nav, .state--*,
+   .meta, .schema__*, .form-grid — and countdown's nav exists only inside ITS
+   gold layer, so its rules would style selectors that are not here and miss
+   five that are.
+
+   WHAT IS OFF-LIMITS AND WHY:
+     - the brand and accent ramps. They are whitelabel: applyBranding() derives
+       twelve custom properties from the tenant's colours and writes them as
+       INLINE styles on <html>, which beat this stylesheet's :root without
+       !important. Every brand surface below goes through one of those twelve.
+       Never a hardcoded hex, and never a shade derived here — the ramp maths
+       lives in deriveBrandRamp() and a color-mix() variant computed in CSS
+       would silently contradict it for some tenants.
+       The two ramps also paint INDEPENDENTLY: a malformed brandColor beside a
+       valid accentColor leaves --brand* at the defaults while --accent* still
+       paints, so neither may be assumed present because the other is.
+     - the five semantic-state colours (--danger/--warn/--ok/--info/--idle and
+       their -soft pairs). A failed run has to read as failed whatever the
+       customer's brand is; they are re-used here, never redefined.
+     - tabular numerals on <time> and .tabular.
+
+   Everything else — shell, density, scale, rhythm, motion — is fair game.
+   ============================================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+:root {
+  /* ── Typography ──────────────────────────────────────────────────────────
+     --font was the system stack doing wordmark, headline, body and control
+     duty at once. It stays the body/UI face; display and mono are new. Mono
+     carries ids, counts and durations — the things that must hold a column. */
+  --font-display: "Space Grotesk", var(--font);
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --gd-snap: cubic-bezier(0.22, 1, 0.36, 1);
+  --gd-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Graphite shell. Neutral by construction so it can never collide with a
+     tenant's brand hue. */
+  --gd-shell: oklch(0.205 0.008 var(--hue));
+  --gd-shell-ink: oklch(0.965 0.004 var(--hue));
+  --gd-shell-ink-2: oklch(0.72 0.008 var(--hue));
+
+  /* ── D-1 · Elevation is a scale, not a per-component value ───────────────
+     Three floating surfaces arrive with the canvas (a dragged node, the docked
+     config panel, the canvas controls) and hardcoding a shadow per component
+     does not survive that. Hue-locked to the same warm 82 the neutrals use:
+     a generic rgba(0,0,0,…) reads cold and grey against this system. */
+  --elev-1: 0 1px 2px oklch(0.2 0.01 var(--hue) / 0.05);
+  --elev-2:
+    0 2px 6px oklch(0.2 0.01 var(--hue) / 0.07), 0 10px 24px -8px oklch(0.2 0.01 var(--hue) / 0.12);
+  --elev-3:
+    0 4px 12px oklch(0.2 0.01 var(--hue) / 0.09), 0 32px 64px -16px oklch(0.2 0.01 var(--hue) / 0.3);
+
+  /* ── D-2 · Canvas texture ────────────────────────────────────────────────
+     A pan/zoom surface with no texture leaves the nodes floating in a void and
+     gives dragging no sense of distance. A dot grid, built from the neutrals
+     that already exist rather than from a new grey: no gradient, no grain. */
+  --grid-bg: var(--sunken);
+  --grid-dot: var(--line-strong);
+
+  /* ── D-3 · Edges are not hairlines ───────────────────────────────────────
+     --line/--line-strong are 1px border tokens; a bezier at 1.6–2px with
+     hover, selected and invalid states needs its own set. Deliberately NOT the
+     five semantic-state colours: an edge crosses nodes of every status, so
+     sharing that palette would make "this connection is invalid" and "the node
+     it points at failed" the same signal. Invalid gets a hue none of the five
+     uses. */
+  --edge: oklch(0.78 0.012 var(--hue));
+  --edge-hover: oklch(0.62 0.014 var(--hue));
+  --edge-selected: var(--accent);
+  --edge-invalid: oklch(0.55 0.19 330);
+
+  /* ── D-4 · Skipped is not idle ───────────────────────────────────────────
+     The timeline's five states are pending/running/succeeded/failed/skipped
+     and only the first four had a token. --idle means "queued, about to run";
+     skipped means "deliberately not run" — the branch a condition did not
+     take. It has to read as further RECEDED than idle, not as a paler idle. */
+  --skip: oklch(0.66 0.006 var(--hue));
+  --skip-soft: oklch(0.935 0.004 var(--hue));
+
+  /* ── D-5 · Selection is not focus ────────────────────────────────────────
+     --focus is the :focus-visible outline and stays exactly that. A selected
+     node is a different state that can coexist with keyboard focus, so it gets
+     its own pair — taken from --accent rather than from a sixth hue, and taken
+     VERBATIM: --accent for the ring, --accent-soft for the bloom behind it.
+     Nothing is mixed or darkened here, so the tenant's ramp is the only thing
+     that decides what selection looks like. */
+  --select: var(--accent);
+  --select-ring: var(--accent-soft);
+}
+
+/* ── Shell: the top bar becomes a command bar ────────────────────────────── */
+/* WHY: a 52px hairline-on-white strip gave the app no anchor — the page just
+   started. Graphite is neutral, so it also stops the tenant's brand colour from
+   competing with a white bar for the same job. */
+.topbar {
+  background: var(--gd-shell);
+  border-bottom: none;
+}
+
+.topbar__inner {
+  max-width: 76rem;
+  height: 64px;
+  gap: 22px;
+}
+
+/* The wordmark sits in a brand-coloured chip rather than being brand-coloured
+   text on graphite. --brand-ink is the one token guaranteed to contrast with
+   --brand (applyBranding flips it to near-black for a light tenant colour), so
+   this is the only brand-on-dark treatment that is safe for every tenant. */
+.brand__wordmark {
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--brand-ink);
+  background: var(--brand);
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.brand__logo {
+  max-height: 28px;
+}
+
+.topbar__nav {
+  gap: 4px;
+}
+
+.navlink {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--gd-shell-ink-2);
+  border-radius: 8px;
+  padding: 7px 12px;
+  transition:
+    background var(--fast) var(--gd-snap),
+    color var(--fast) var(--gd-snap);
+}
+
+.navlink:hover {
+  background: oklch(1 0 0 / 0.08);
+  color: var(--gd-shell-ink);
+}
+
+/* Keeps global.css's brand pairing (--brand-strong on --brand-soft), which is
+   already contrast-checked for any tenant colour. */
+.navlink--active,
+.navlink--active:hover {
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+  font-weight: 600;
+}
+
+.topbar__user {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gd-shell-ink-2);
+}
+
+/* The sign-out control is a .btn--quiet, styled for a light surface. */
+.topbar .btn--quiet {
+  color: var(--gd-shell-ink-2);
+}
+
+.topbar .btn--quiet:hover:not(:disabled) {
+  background: oklch(1 0 0 / 0.1);
+  color: var(--gd-shell-ink);
+}
+
+/* ── Canvas ──────────────────────────────────────────────────────────────── */
+/* 64rem was set for a list of rows. The editor now carries a diagram and a
+   docked panel side by side, and 76rem is what that pair needs before the
+   canvas starts squeezing the panel off the row. */
+.page {
+  max-width: 76rem;
+  padding: 36px 24px 96px;
+  animation: gd-rise 0.5s var(--gd-out) both;
+}
+
+/* ── Page header ─────────────────────────────────────────────────────────── */
+.page__head {
+  align-items: flex-end;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+
+.page__title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 3.4vw, 2.875rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+/* The count was 13px of grey filler beside the title. It is the number the
+   screen exists to report, so it gets to look like one. */
+.page__count {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  align-self: center;
+}
+
+.page__lead {
+  margin-top: 12px;
+  line-height: 1.6;
+}
+
+/* ── Filter chips ────────────────────────────────────────────────────────── */
+.filters {
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.filter {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 8px 14px;
+  transition:
+    transform 0.28s var(--gd-snap),
+    box-shadow 0.28s var(--gd-snap),
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.filter:hover:not(.is-active) {
+  transform: translateY(-1px);
+  box-shadow: var(--elev-1);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+/* Colour rules stay exactly as global.css sets them, including the deliberate
+   neutral-until-hover danger button. This adds only the tactile layer. */
+.btn {
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 9px 16px;
+  transition:
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    transform 0.28s var(--gd-snap),
+    box-shadow 0.28s var(--gd-snap);
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--elev-1);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+  transition-duration: 0.09s;
+  box-shadow: none;
+}
+
+/* Quiet buttons sit inline in rows and sentences — a lift would make text jump. */
+.btn--quiet {
+  border-radius: 7px;
+  padding: 6px 9px;
+}
+
+.btn--quiet:hover:not(:disabled),
+.btn--quiet:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+.input {
+  border-radius: 9px;
+  transition:
+    border-color var(--fast) var(--gd-snap),
+    box-shadow var(--fast) var(--gd-snap);
+}
+
+.input:focus {
+  border-color: var(--ink-3);
+}
+
+.field__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ── Rows ────────────────────────────────────────────────────────────────── */
+/* WHY: every row was one 13px weight, so the name and the meta line read as
+   equal and the list had no scan line. The name steps up; the right-hand
+   figure becomes a mono numeral the eye can run down the edge. */
+.rows--spaced {
+  border-top: none;
+}
+
+.row {
+  gap: 18px;
+  padding: 15px 12px;
+  border-radius: 10px;
+  transition:
+    transform 0.3s var(--gd-snap),
+    box-shadow 0.3s var(--gd-snap),
+    background 0.3s var(--gd-snap);
+}
+
+.row:hover {
+  box-shadow: var(--elev-1);
+  background: var(--surface);
+  transform: translateX(2px);
+}
+
+.row__name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.row__meta {
+  font-size: 0.75rem;
+}
+
+.row__when {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+}
+
+.row__tag {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Staggered entry. Capped at 10 so a long list does not animate for a second
+   and a half; anything past that appears immediately. */
+@keyframes gd-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rows .row {
+  animation: gd-row-in 0.42s var(--gd-out) both;
+}
+
+.rows .row:nth-child(1) {
+  animation-delay: 0ms;
+}
+.rows .row:nth-child(2) {
+  animation-delay: 35ms;
+}
+.rows .row:nth-child(3) {
+  animation-delay: 70ms;
+}
+.rows .row:nth-child(4) {
+  animation-delay: 105ms;
+}
+.rows .row:nth-child(5) {
+  animation-delay: 140ms;
+}
+.rows .row:nth-child(6) {
+  animation-delay: 175ms;
+}
+.rows .row:nth-child(7) {
+  animation-delay: 210ms;
+}
+.rows .row:nth-child(8) {
+  animation-delay: 245ms;
+}
+.rows .row:nth-child(9) {
+  animation-delay: 280ms;
+}
+.rows .row:nth-child(n + 10) {
+  animation-delay: 315ms;
+}
+
+/* ── State chips ─────────────────────────────────────────────────────────── */
+/* The colour values are global.css's and stay there. What changes is the
+   typography — a chip printed in mono at tracking reads as an instrument
+   label rather than as a word someone shouted. */
+.state {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  padding: 4px 10px;
+}
+
+/* D-4 in use: skipped recedes further than idle instead of echoing it. */
+.state--skipped {
+  background: var(--skip-soft);
+  color: var(--skip);
+}
+
+/* ── Run metadata ────────────────────────────────────────────────────────── */
+.meta {
+  gap: 14px 40px;
+  padding: 18px;
+  border-top: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--elev-1);
+}
+
+.meta__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.14em;
+}
+
+.meta__value {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* ── Section headings ────────────────────────────────────────────────────── */
+.section-title,
+.schema__title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.schema__head {
+  padding-bottom: 12px;
+}
+
+/* Each declared field is a block; a hairline between them was not enough
+   separation once there were three rows of inputs inside each one. */
+.schema__row {
+  padding: 18px 14px;
+  border-bottom: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  margin-top: 12px;
+  transition:
+    box-shadow 0.3s var(--gd-snap),
+    border-color 0.3s var(--gd-snap);
+}
+
+.schema__row:hover {
+  box-shadow: var(--elev-1);
+  border-color: var(--line-strong);
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+/* A dashed box reads as "content failed to load" rather than "nothing yet", and
+   it is the first thing a new tenant sees. */
+.empty {
+  margin-top: 44px;
+  padding: 64px 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--elev-1);
+}
+
+.empty__title {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  margin-bottom: 10px;
+}
+
+.empty__hint {
+  line-height: 1.6;
+}
+
+.notice {
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-weight: 500;
+}
+
+/* ── Dialog ──────────────────────────────────────────────────────────────── */
+dialog {
+  border-radius: 18px;
+  box-shadow: var(--elev-3);
+}
+
+.dialog__title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+/* ── Login ───────────────────────────────────────────────────────────────── */
+.login__brand {
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}
+
+.login__card {
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--elev-2);
+  animation: gd-rise 0.5s var(--gd-out) both;
+}
+
+/* ── The canvas ──────────────────────────────────────────────────────────── */
+/* React Flow is repainted through ITS OWN custom properties rather than by
+   overriding its selectors: the library's variables are its supported surface,
+   so this survives a minor version bump. Everything it ships is scoped under
+   .react-flow, so nothing here can reach the rest of the module. */
+.graph__canvas {
+  border-radius: 14px;
+  box-shadow: var(--elev-1) inset;
+  height: 30rem;
+}
+
+.react-flow {
+  /* D-2: the dot grid, in the neutral family. */
+  --xy-background-color: var(--grid-bg);
+  --xy-background-pattern-color: var(--grid-dot);
+
+  /* D-3: edges get their own strokes, at a weight a hairline token never had. */
+  --xy-edge-stroke: var(--edge);
+  --xy-edge-stroke-width: 1.6;
+  --xy-edge-stroke-selected: var(--edge-selected);
+  --xy-connectionline-stroke: var(--edge-hover);
+  --xy-connectionline-stroke-width: 2;
+
+  --xy-handle-background-color: var(--ink-3);
+  --xy-handle-border-color: var(--surface);
+
+  --xy-selection-background-color: var(--select-ring);
+  --xy-selection-border: 1px dashed var(--select);
+
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--sunken);
+  --xy-controls-button-color: var(--ink-2);
+  --xy-controls-button-color-hover: var(--ink);
+  --xy-controls-button-border-color: var(--line);
+  --xy-controls-box-shadow: var(--elev-2);
+
+  --xy-edge-label-background-color: var(--surface);
+  --xy-edge-label-color: var(--ink-2);
+}
+
+.react-flow__edge-path {
+  transition: stroke var(--fast) var(--gd-snap);
+}
+
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--edge-hover);
+}
+
+.react-flow__edge-text {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  fill: var(--ink-2);
+}
+
+.react-flow__edge-textbg {
+  fill: var(--surface);
+}
+
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  border-width: 2px;
+  transition:
+    background var(--fast) var(--gd-snap),
+    transform var(--fast) var(--gd-snap);
+}
+
+.react-flow__handle:hover,
+.react-flow__handle.connectingfrom {
+  background: var(--edge-hover);
+  transform: scale(1.25);
+}
+
+/* D-3's fourth stroke, doing real work: a target that would close a loop on
+   itself or duplicate an existing connection refuses the drop, and says so in
+   a colour none of the five run states uses. */
+.react-flow__handle.connectingto:not(.valid) {
+  background: var(--edge-invalid);
+}
+
+.react-flow__controls-button {
+  border-radius: 6px;
+}
+
+.react-flow__attribution {
+  font-size: 9px;
+  background: transparent;
+  color: var(--ink-3);
+}
+
+/* ── Node cards ──────────────────────────────────────────────────────────── */
+.nodecard {
+  border-radius: 12px;
+  padding: 11px 13px;
+  box-shadow: var(--elev-1);
+  transition:
+    box-shadow 0.28s var(--gd-snap),
+    border-color 0.28s var(--gd-snap),
+    transform 0.28s var(--gd-snap);
+}
+
+.nodecard:hover {
+  box-shadow: var(--elev-2);
+  border-color: var(--line-strong);
+}
+
+/* A node being dragged is lifted off the grid — the one moment a shadow is
+   describing a real position rather than decorating a box. */
+.react-flow__node.dragging .nodecard {
+  box-shadow: var(--elev-3);
+  transform: scale(1.02);
+}
+
+/* D-5: selection, in the tenant's accent, verbatim from the twelve. The inner
+   ring is the accent itself and the outer bloom its soft tint — nothing is
+   mixed or darkened here, so a tenant's ramp decides entirely how this reads. */
+.react-flow__node.selected .nodecard {
+  border-color: var(--select);
+  box-shadow:
+    0 0 0 2px var(--select),
+    0 0 0 6px var(--select-ring),
+    var(--elev-2);
+}
+
+.nodecard__type {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.nodecard__id {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nodecard__summary {
+  font-size: 0.6875rem;
+  line-height: 1.45;
+}
+
+/* The start of the graph is the one node that is not a step, so it carries the
+   brand chip treatment the wordmark uses — brand-ink on brand, the only
+   pairing guaranteed to contrast for every tenant. */
+.nodecard--trigger .nodecard__type {
+  color: var(--brand-ink);
+  background: var(--brand);
+  border-radius: 6px;
+  padding: 2px 8px;
+  align-self: flex-start;
+}
+
+.nodecard__branch {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.graph__palette-label {
+  font-family: var(--font-mono);
+  letter-spacing: 0.14em;
+}
+
+/* ── Config panel ────────────────────────────────────────────────────────── */
+.panel {
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--elev-2);
+  max-height: 30rem;
+}
+
+.panel__title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.panel__id {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Timeline ────────────────────────────────────────────────────────────── */
+/* Not a new component: the run rows, with a rule down the left so the sequence
+   reads as one walk instead of five unrelated lines. The status chip is the
+   module's own .state--*, unchanged — a second vocabulary for the same five
+   states is how two palettes drift apart. */
+.timeline {
+  position: relative;
+  padding-left: 18px;
+}
+
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.timeline__row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--line-strong);
+}
+
+.timeline__row {
+  position: relative;
+}
+
+/* ── Numerals ────────────────────────────────────────────────────────────── */
+/* global.css already sets tabular-nums; a mono face makes a duration read as
+   an instrument and holds the columns properly. */
+time,
+.tabular {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+}
+
+/* ── Motion ──────────────────────────────────────────────────────────────── */
+@keyframes gd-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page,
+  .login__card,
+  .rows .row {
+    animation: none;
+  }
+
+  .btn:hover:not(:disabled),
+  .btn:active:not(:disabled),
+  .filter:hover:not(.is-active),
+  .row:hover,
+  .react-flow__node.dragging .nodecard,
+  .react-flow__handle:hover,
+  .react-flow__handle.connectingfrom {
+    transform: none;
+  }
+}
+
+/* ── Narrow screens ──────────────────────────────────────────────────────── */
+@media (max-width: 60rem) {
+  .graph__canvas {
+    height: 22rem;
+  }
+}
+
+@media (max-width: 45rem) {
+  .topbar__inner {
+    height: auto;
+    padding: 10px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .page {
+    padding: 24px 16px 72px;
+  }
+
+  .page__title {
+    font-size: 1.75rem;
+  }
+
+  .row {
+    gap: 12px;
+  }
+}

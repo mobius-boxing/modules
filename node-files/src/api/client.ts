@@ -3,7 +3,9 @@ import type { AxiosInstance, AxiosResponse } from "axios";
 import { createApiClient } from "@mobius-modules/api-client";
 import type {
   AuthUser,
+  Credential,
   FieldValue,
+  NodeTypeDescriptor,
   Paginated,
   Run,
   UploadResult,
@@ -177,6 +179,32 @@ export const api = {
 
   me(): Promise<AuthUser> {
     return unwrap(http.get<{ data: AuthUser }>(`${HOST}/auth/me`));
+  },
+
+  // ---- node registry ----
+
+  /**
+   * The node types the engine can run, with the schema each one's config
+   * follows. The editor generates its panel from this, so a type added on the
+   * backend appears here with no frontend change.
+   *
+   * Answers `unknown` on purpose: `lib/nodeTypes.ts` normalises it. A 404 (an
+   * API that has not shipped the registry yet) surfaces as an ApiError the
+   * editor turns into a message, never into a blank canvas.
+   */
+  listNodeTypes(): Promise<NodeTypeDescriptor[]> {
+    return unwrap(http.get<{ data: NodeTypeDescriptor[] }>(`${MODULE}/node-types`));
+  },
+
+  /**
+   * The company's credentials, for the `credential` picker in the config panel.
+   * Secrets are write-only and never come back — not even masked — so this is
+   * only ever a list of names and uuids.
+   */
+  listCredentials(): Promise<Paginated<Credential>> {
+    return body(
+      http.get<Paginated<Credential>>(`${MODULE}/credentials`, { params: { limit: 100 } }),
+    );
   },
 
   // ---- workflows ----

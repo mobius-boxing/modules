@@ -16,6 +16,7 @@ const FILTERS: { key: "all" | RunStatus; label: string }[] = [
   { key: "queued", label: "En cola" },
   { key: "extracting", label: "Procesando" },
   { key: "pending_review", label: "Para revisar" },
+  { key: "running", label: "Ejecutando" },
   { key: "succeeded", label: "Completadas" },
   { key: "failed", label: "Fallidas" },
 ];
