@@ -14,7 +14,10 @@ import { UnknownTenantPage } from "../components/UnknownTenantPage";
  * of Phase 1's scope), so the label is provisionally the slug. When the product
  * name is chosen, this constant is the only thing that changes.
  */
-const DOMAIN_LABEL = "node-files";
+// Customer-facing label, NOT the module slug — same split as countdown
+// (slug `countdown`, label `vencimientos`). Must match `modules.publicDomainLabel`,
+// the ACM cert, the S3 bucket and the Porkbun CNAMEs.
+const DOMAIN_LABEL = "flujos";
 const MODULE_SLUG = "node-files";
 
 /**
