@@ -1,71 +1,366 @@
 /* ============================================================================
-   GOLD.CSS — countdown module, visual pass
+   GOLD.CSS — countdown module, visual redesign
    ----------------------------------------------------------------------------
    Loaded after global.css in src/main.tsx. Removable as one unit.
 
-   SCOPE NOTE — this module is NOT the usual redesign target. global.css is a
-   deliberate, well-reasoned system, and several of its decisions are load-
-   bearing. This layer therefore changes typography, hierarchy, button physics,
-   the empty state and entry motion, and touches NOTHING that carries meaning:
+   WHAT IS OFF-LIMITS AND WHY — global.css is a considered system and some of
+   its decisions carry meaning, so this layer restructures aggressively but
+   never touches:
+     - the brand/accent ramps. They are whitelabel: applyBranding() derives
+       them from the tenant's colour at runtime and sets them inline on <html>.
+       Every brand surface below goes through var(--brand*) so a tenant's
+       colour still wins.
+     - the four due-date bands. Their -text/-dot/-soft triplets encode
+       time-to-due and are tuned separately; they are re-used here, never
+       redefined.
+     - the traffic light, the hollow "done" mark that survives greyscale, and
+       the 1.4s (~0.7Hz) blink kept below the 3Hz seizure threshold.
+     - tabular numerals on <time>.
 
-     - the brand/accent ramps are whitelabel. applyBranding() derives them from
-       the tenant's colour and sets them inline on <html>; hardcoding an accent
-       here (the usual prescription) would silently break every tenant.
-     - the due-date bands (--overdue / --week / --month / ...) encode
-       time-to-due. Their -text/-dot/-soft triplets are tuned separately for a
-       reason global.css spells out; they are not decoration to be unified.
-     - the traffic-light dot sizing, the hollow "done" mark that survives
-       greyscale, and the 1.4s (~0.7Hz) blink kept below the 3Hz seizure
-       threshold are accessibility decisions. Untouched.
-     - tabular numerals on <time> stop the countdown reflowing. Reinforced
-       below with a real mono face rather than overridden.
+   Everything else — shell, density, scale, rhythm, motion — is fair game.
    ============================================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* The one genuine typographic crime in the module: --font is the system
-     stack, doing wordmark, headline, body and control duty at once. A display
-     face for the few large moments and a mono for the digits is the whole
-     intervention — --font itself stays as the body/UI face, which is the
-     correct choice for dense list reading. */
+  /* --font was the system stack doing wordmark, headline, body and control
+     duty at once. It stays the body/UI face; display and mono are new. */
   --font-display: 'Space Grotesk', var(--font);
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --gd-ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
-  --gd-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --gd-snap: cubic-bezier(0.22, 1, 0.36, 1);
+  --gd-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Graphite shell. Neutral by construction so it can never collide with a
+     tenant's brand hue. */
+  --gd-shell: oklch(0.205 0.008 var(--hue));
+  --gd-shell-2: oklch(0.262 0.009 var(--hue));
+  --gd-shell-ink: oklch(0.965 0.004 var(--hue));
+  --gd-shell-ink-2: oklch(0.72 0.008 var(--hue));
 }
 
-/* ── Wordmark ────────────────────────────────────────────────────────────── */
-/* Still a text wordmark — global.css explains why it must not become an
-   asset. It just stops being the system UI font. */
-.brand__wordmark,
-.brand {
-  font-family: var(--font-display);
-  letter-spacing: -0.03em;
+/* ── Shell: the top bar becomes a command bar ────────────────────────────── */
+/* WHY: a 52px hairline-on-white strip gave the app no anchor — the page just
+   started. Graphite is neutral, so it also stops the tenant's brand colour
+   from competing with a white bar for the same job. */
+.topbar {
+  background: var(--gd-shell);
+  border-bottom: none;
 }
 
-/* ── Page hierarchy ──────────────────────────────────────────────────────── */
-/* WHY: --t-lg is 1.375rem, so the page headline sat 6px above body text. The
-   screen had no first read. */
-.page__title {
+.topbar__inner {
+  max-width: 66rem;
+  height: 64px;
+  gap: 22px;
+}
+
+/* The wordmark sits in a brand-coloured chip rather than being brand-coloured
+   text on graphite. --brand-ink is the one token guaranteed to contrast with
+   --brand (applyBranding flips it to near-black for a light tenant colour), so
+   this is the only brand-on-dark treatment that is safe for every tenant. */
+.brand__wordmark {
   font-family: var(--font-display);
-  font-size: clamp(1.625rem, 2.6vw, 2.125rem);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--brand-ink);
+  background: var(--brand);
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+/* A tenant logo is an image and needs no chip — just room to breathe. */
+.brand__logo { max-height: 28px; }
+
+.topbar__nav { gap: 4px; }
+
+.navlink {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--gd-shell-ink-2);
+  border-radius: 8px;
+  padding: 7px 12px;
+  transition: background var(--fast) var(--gd-snap), color var(--fast) var(--gd-snap);
+}
+
+.navlink:hover {
+  background: oklch(1 0 0 / 0.08);
+  color: var(--gd-shell-ink);
+}
+
+/* Keeps the existing brand pairing (--brand text on --brand-soft), which is
+   already contrast-checked for any tenant colour. */
+.navlink--active,
+.navlink--active:hover {
+  background: var(--brand-soft);
+  color: var(--brand-strong);
   font-weight: 600;
-  line-height: 1.05;
-  letter-spacing: -0.035em;
 }
 
-.page__count {
+.topbar__user {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gd-shell-ink-2);
 }
 
+/* The sign-out control is a .btn--quiet, which is styled for a light surface */
+.topbar .btn--quiet {
+  color: var(--gd-shell-ink-2);
+}
+
+.topbar .btn--quiet:hover:not(:disabled) {
+  background: oklch(1 0 0 / 0.1);
+  color: var(--gd-shell-ink);
+}
+
+/* ── Canvas ──────────────────────────────────────────────────────────────── */
+/* 60rem left a third of a laptop screen empty; 76rem was too far the other way
+   — a two-column row stranded the date at the far edge with nothing between.
+   66rem is the widest the list reads as one object. */
+.page {
+  max-width: 66rem;
+  padding: 36px 24px 96px;
+  animation: gd-rise 0.5s var(--gd-out) both;
+}
+
+/* ── Page header ─────────────────────────────────────────────────────────── */
 .page__head {
-  padding-bottom: 18px;
+  align-items: flex-end;
+  padding-bottom: 20px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 4px;
+}
+
+.page__title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 3.4vw, 2.875rem);
+  font-weight: 600;
+  line-height: 1.0;
+  letter-spacing: -0.04em;
+}
+
+/* The pending count was 13px grey filler beside the title. It is the single
+   number the screen exists to report, so it gets to look like one. */
+.page__count {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  align-self: center;
+}
+
+/* ── Filter chips become the legend + distribution row ───────────────────── */
+/* Each chip already carries its band's colour, so the row is the legend for
+   the list below it. Making the count a real numeral turns it into a summary
+   the eye can read in one pass. */
+.filters {
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.filter {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  transition:
+    transform 0.28s var(--gd-snap),
+    box-shadow 0.28s var(--gd-snap),
+    background var(--fast) var(--ease);
+}
+
+.filter:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px oklch(0.2 0.01 var(--hue) / 0.1);
+}
+
+.filter__count {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+/* ── Groups ──────────────────────────────────────────────────────────────── */
+.group { margin-top: 34px; }
+
+.group__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+}
+
+.group__head {
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.group__count {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* ── Rows ────────────────────────────────────────────────────────────────── */
+/* WHY: every row was one 13px weight, so title and date read as equal and the
+   list had no scan line. The band tint stays (it is the signal); the left rule
+   thickens to carry it, the title steps up, and the countdown becomes a mono
+   figure the eye can run down the right edge. */
+.row {
+  gap: 18px;
+  padding: 15px 14px 15px 0;
+  border-radius: 0 9px 9px 0;
+  transition:
+    transform 0.3s var(--gd-snap),
+    box-shadow 0.3s var(--gd-snap),
+    filter 0.3s var(--gd-snap);
+}
+
+.row[class*="band--"] {
+  padding-left: 16px;
+  border-left-width: 4px;
+}
+
+.row:hover {
+  transform: translateX(2px);
+  box-shadow: 0 2px 14px oklch(0.2 0.01 var(--hue) / 0.09);
+}
+
+.row__title-text {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.row__meta {
+  font-size: 0.75rem;
+  color: var(--ink-3);
+}
+
+.row__when {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* Staggered entry. Capped at 10 so a long list does not animate for a second
+   and a half; anything past that appears immediately. */
+@keyframes gd-row-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.rows .row {
+  animation: gd-row-in 0.42s var(--gd-out) both;
+}
+
+.rows .row:nth-child(1)  { animation-delay: 0ms; }
+.rows .row:nth-child(2)  { animation-delay: 35ms; }
+.rows .row:nth-child(3)  { animation-delay: 70ms; }
+.rows .row:nth-child(4)  { animation-delay: 105ms; }
+.rows .row:nth-child(5)  { animation-delay: 140ms; }
+.rows .row:nth-child(6)  { animation-delay: 175ms; }
+.rows .row:nth-child(7)  { animation-delay: 210ms; }
+.rows .row:nth-child(8)  { animation-delay: 245ms; }
+.rows .row:nth-child(9)  { animation-delay: 280ms; }
+.rows .row:nth-child(n+10) { animation-delay: 315ms; }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+/* Colour rules stay exactly as global.css sets them, including the deliberate
+   neutral-until-hover danger button. This adds only the tactile layer. */
+.btn {
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 9px 16px;
+  transition:
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    transform 0.28s var(--gd-snap),
+    box-shadow 0.28s var(--gd-snap);
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px oklch(0.2 0.01 var(--hue) / 0.12);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+  transition-duration: 0.09s;
+  box-shadow: none;
+}
+
+/* Quiet buttons sit inline in rows and sentences — a lift would make text jump */
+.btn--quiet {
+  border-radius: 7px;
+  padding: 6px 9px;
+}
+
+.btn--quiet:hover:not(:disabled),
+.btn--quiet:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+
+/* ── Segmented view switch (Columna / Calendario) ────────────────────────── */
+.toolbar { margin-top: 26px; }
+
+/* ── Fields ──────────────────────────────────────────────────────────────── */
+.field input,
+.field select,
+.field textarea,
+select,
+input[type="text"],
+input[type="date"],
+input[type="number"],
+input[type="search"] {
+  border-radius: 9px;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+/* A dashed box reads as "content failed to load" rather than "nothing yet",
+   and it is the first thing a new tenant sees. */
+.empty {
+  margin-top: 44px;
+  padding: 64px 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px oklch(0.2 0.01 var(--hue) / 0.03);
+}
+
+.empty__title {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  margin-bottom: 10px;
+}
+
+.empty__hint { line-height: 1.6; }
+
+/* ── Dialog ──────────────────────────────────────────────────────────────── */
+.dialog {
+  border-radius: 18px;
+  box-shadow:
+    0 4px 12px oklch(0.2 0.01 var(--hue) / 0.09),
+    0 32px 64px -16px oklch(0.2 0.01 var(--hue) / 0.3);
+}
+
+.dialog__title,
+.dialog h2 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
 }
 
 /* ── Numerals ────────────────────────────────────────────────────────────── */
@@ -77,75 +372,25 @@ time,
   font-feature-settings: 'tnum' 1;
 }
 
-/* ── Button physics ──────────────────────────────────────────────────────── */
-/* Colour rules are left exactly as global.css sets them (including the
-   deliberate neutral-until-hover danger button). This adds only the tactile
-   layer the buttons were missing. */
-.btn {
-  transition:
-    background var(--fast) var(--ease),
-    border-color var(--fast) var(--ease),
-    transform 0.3s var(--gd-ease-snap),
-    box-shadow 0.3s var(--gd-ease-snap);
-}
-
-.btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 10px oklch(0.2 0.01 var(--hue) / 0.09);
-}
-
-.btn:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
-  transition-duration: 0.09s;
-  box-shadow: none;
-}
-
-/* The quiet button is inline in sentences and lists — a lift there would make
-   the text jump, so it only gets the background change global.css defines. */
-.btn--quiet:hover:not(:disabled) {
-  transform: none;
-  box-shadow: none;
-}
-
-/* ── Empty state ─────────────────────────────────────────────────────────── */
-/* WHY: a dashed-border box is the placeholder pattern — it reads as "content
-   failed to load" rather than "nothing here yet". This is the first thing a
-   new tenant sees, so it should look finished. */
-.empty {
-  margin-top: 40px;
-  padding: 56px 24px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: 0 1px 2px oklch(0.2 0.01 var(--hue) / 0.03);
-}
-
-.empty__title {
-  font-family: var(--font-display);
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  margin-bottom: 8px;
-}
-
-.empty__hint {
-  line-height: 1.6;
-}
-
-/* ── Entry motion ────────────────────────────────────────────────────────── */
-/* Deliberately only on the page container: the rows carry the blink and the
-   band colours, and animating them would fight signals that mean something. */
+/* ── Motion ──────────────────────────────────────────────────────────────── */
 @keyframes gd-rise {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.page {
-  animation: gd-rise 0.5s var(--gd-ease-out) both;
+@media (prefers-reduced-motion: reduce) {
+  .page,
+  .rows .row { animation: none; }
+  .btn:hover:not(:disabled),
+  .btn:active:not(:disabled),
+  .filter:hover:not(:disabled),
+  .row:hover { transform: none; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .page { animation: none; }
-  .btn:hover:not(:disabled),
-  .btn:active:not(:disabled) { transform: none; }
+/* ── Narrow screens ──────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .topbar__inner { height: auto; padding: 10px 16px; flex-wrap: wrap; gap: 10px; }
+  .page { padding: 24px 16px 72px; }
+  .page__title { font-size: 1.875rem; }
+  .row { gap: 12px; }
 }
