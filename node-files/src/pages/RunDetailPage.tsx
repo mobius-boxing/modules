@@ -216,11 +216,11 @@ export function RunDetailPage() {
           {runStatusLabel(run.status)}
         </span>
         {isRunInFlight(run.status) ? (
-          // Says WHY the values are empty. Without this the screen is
+          // Says the run is still moving. Without it, empty fields are
           // indistinguishable from a document that failed to read.
           <span className="state__working" role="status" data-testid="run-working">
             <span className="state__spinner" aria-hidden="true" />
-            Procesando… los valores aparecen solos
+            Procesando…
           </span>
         ) : null}
         <Link className="btn" to="/ejecuciones" data-testid="run-back">
