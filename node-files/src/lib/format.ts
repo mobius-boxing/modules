@@ -38,6 +38,42 @@ const RUN_STATUS_LABELS: Record<RunStatus, string> = {
   failed: "Fallida",
 };
 
+/**
+ * The statuses where the server is still going to change this run on its own.
+ *
+ * `pending_review` is deliberately NOT one of them: at that point the run is
+ * waiting for a PERSON, and the detail screen has a draft the reviewer is
+ * typing into that is re-seeded whenever the run object changes. Polling then
+ * would silently wipe their edits mid-keystroke. Poll while the machine owns
+ * the run; stop the moment the human does.
+ */
+const IN_FLIGHT_RUN_STATUSES: readonly RunStatus[] = [
+  "queued",
+  "extracting",
+  "running",
+];
+
+/**
+ * Where the API permits cancelling: `queued` and `pending_review` ONLY
+ * (node-files.service.ts cancelRun). It refuses mid-execution on purpose — a
+ * node that has already sent an email cannot be un-sent by a status change.
+ *
+ * This MUST mirror the server. Offering the button anywhere else produces a
+ * 409 the user cannot act on, which reads as the app being broken.
+ */
+const CANCELLABLE_RUN_STATUSES: readonly RunStatus[] = [
+  "queued",
+  "pending_review",
+];
+
+export function isRunCancellable(status: string): boolean {
+  return CANCELLABLE_RUN_STATUSES.includes(status as RunStatus);
+}
+
+export function isRunInFlight(status: string): boolean {
+  return IN_FLIGHT_RUN_STATUSES.includes(status as RunStatus);
+}
+
 export function runStatusLabel(status: string): string {
   return RUN_STATUS_LABELS[status as RunStatus] ?? status;
 }

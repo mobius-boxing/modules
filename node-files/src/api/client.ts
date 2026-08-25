@@ -268,4 +268,16 @@ export const api = {
   retryRun(uuid: string): Promise<Run> {
     return unwrap(http.post<{ data: Run }>(`${MODULE}/runs/${uuid}/retry`, {}));
   },
+
+  /**
+   * Abandon a run the reviewer does not want to finish.
+   *
+   * The API allows this from `queued` and `pending_review` ONLY, and 409s
+   * during `extracting`/`running` on purpose: a node that has already sent an
+   * email cannot be un-sent by a status change, so a run marked cancelled whose
+   * email arrived anyway would be the UI telling a lie.
+   */
+  cancelRun(uuid: string): Promise<Run> {
+    return unwrap(http.post<{ data: Run }>(`${MODULE}/runs/${uuid}/cancel`, {}));
+  },
 };

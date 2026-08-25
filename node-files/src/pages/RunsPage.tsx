@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError, api } from "../api/client";
-import { countLabel, formatDateTime, runStatusLabel } from "../lib/format";
+import {
+  countLabel,
+  formatDateTime,
+  isRunInFlight,
+  runStatusLabel,
+} from "../lib/format";
 import type { RunStatus, RunSummary } from "../types/api";
+
+/** Slower than the detail screen: a list is glanced at, not watched. */
+const LIST_POLL_MS = 5000;
 
 const PAGE_LIMIT = 100;
 
@@ -77,6 +85,30 @@ export function RunsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * Keep the list honest while anything on it is still moving. Unlike the detail
+   * screen there is no draft to protect here, but the trigger is the same: poll
+   * only while the SERVER owns at least one visible run, and stop once every row
+   * has settled. A list of finished runs polls nothing.
+   */
+  const anyInFlight = runs.some((run) => isRunInFlight(run.status));
+  const pollingRef = useRef(false);
+
+  useEffect(() => {
+    if (!anyInFlight) return;
+    const tick = async () => {
+      if (pollingRef.current || document.hidden) return;
+      pollingRef.current = true;
+      try {
+        await load();
+      } finally {
+        pollingRef.current = false;
+      }
+    };
+    const timer = window.setInterval(() => void tick(), LIST_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [anyInFlight, load]);
 
   return (
     <>

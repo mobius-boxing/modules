@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError, api } from "../api/client";
@@ -11,8 +11,21 @@ import {
   normalizeExtracted,
   toEditableValue,
 } from "../lib/fields";
-import { formatDateTime, formatTokens, runStatusLabel } from "../lib/format";
+import {
+  formatDateTime,
+  formatTokens,
+  isRunCancellable,
+  isRunInFlight,
+  runStatusLabel,
+} from "../lib/format";
 import type { FieldValue, Run, WorkflowField } from "../types/api";
+
+/**
+ * How often an unfinished run is re-checked. The worker ticks every 5 s, so a
+ * 3 s poll notices the change within a tick without hammering the API; it stops
+ * by itself the moment the run leaves an in-flight status.
+ */
+const POLL_MS = 3000;
 
 /** The reviewer's boxes hold strings; the type turns them back into values. */
 type Draft = Record<string, string>;
@@ -37,6 +50,9 @@ export function RunDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Draft>({});
+  // Two-step, like the workflow delete: cancelling discards a document someone
+  // already paid to extract, and there is no undo.
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
 
   const load = useCallback(async () => {
     if (uuid === undefined) return;
@@ -53,6 +69,41 @@ export function RunDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * Extraction is asynchronous: the upload redirects here with the run still
+   * `queued`, and the worker fills in the values seconds later. Without this the
+   * page showed empty fields forever and a user reasonably concluded the
+   * document had failed to read — the values had in fact landed, on the server.
+   *
+   * Only while the SERVER still owns the run. The moment it reaches
+   * `pending_review` the reviewer owns it, and `draft` — re-seeded on every run
+   * change by the effect below — would be overwritten under their fingers. So
+   * polling and the review form never coexist.
+   *
+   * `inFlightRef` keeps the interval from stacking a second request on a slow
+   * one, and the effect keys on the STATUS rather than the run object, so a
+   * refresh that changes nothing does not restart the timer.
+   */
+  const status = run?.status;
+  const inFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (status === undefined || !isRunInFlight(status)) return;
+
+    const tick = async () => {
+      if (inFlightRef.current || document.hidden) return;
+      inFlightRef.current = true;
+      try {
+        await load();
+      } finally {
+        inFlightRef.current = false;
+      }
+    };
+
+    const timer = window.setInterval(() => void tick(), POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [status, load]);
 
   const extracted = useMemo(() => normalizeExtracted(run?.extracted), [run]);
   const fields = useMemo(() => fieldsForRun(run?.fields, extracted), [run, extracted]);
@@ -116,6 +167,20 @@ export function RunDetailPage() {
     }
   };
 
+  const cancel = async () => {
+    if (!run) return;
+    setActionError(null);
+    setBusy(true);
+    try {
+      setRun(await api.cancelRun(run.uuid));
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "No se pudo cancelar la ejecución.");
+    } finally {
+      setBusy(false);
+      setConfirmingCancel(false);
+    }
+  };
+
   if (loading) {
     return (
       <p className="page__lead" data-testid="run-loading">
@@ -150,6 +215,14 @@ export function RunDetailPage() {
         <span className={`state state--${run.status}`} data-testid="run-status">
           {runStatusLabel(run.status)}
         </span>
+        {isRunInFlight(run.status) ? (
+          // Says WHY the values are empty. Without this the screen is
+          // indistinguishable from a document that failed to read.
+          <span className="state__working" role="status" data-testid="run-working">
+            <span className="state__spinner" aria-hidden="true" />
+            Procesando… los valores aparecen solos
+          </span>
+        ) : null}
         <Link className="btn" to="/ejecuciones" data-testid="run-back">
           Volver
         </Link>
@@ -163,6 +236,42 @@ export function RunDetailPage() {
           >
             {busy ? "Reintentando…" : "Reintentar"}
           </button>
+        ) : null}
+        {/* Cancellable exactly where the API allows it — queued, or waiting on a
+            person. Mid-execution it is refused, so no button is offered. */}
+        {isRunCancellable(run.status) ? (
+          confirmingCancel ? (
+            <>
+              <button
+                type="button"
+                className="btn btn--danger"
+                data-testid="run-cancel-confirm"
+                disabled={busy}
+                onClick={() => void cancel()}
+              >
+                {busy ? "Cancelando…" : "Confirmar cancelación"}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                data-testid="run-cancel-abort"
+                disabled={busy}
+                onClick={() => setConfirmingCancel(false)}
+              >
+                Volver atrás
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              data-testid="run-cancel"
+              disabled={busy}
+              onClick={() => setConfirmingCancel(true)}
+            >
+              Cancelar ejecución
+            </button>
+          )
         ) : null}
       </div>
 
