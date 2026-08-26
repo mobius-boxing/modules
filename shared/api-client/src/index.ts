@@ -4,11 +4,14 @@ export interface ApiClientOptions {
   /** e.g. import.meta.env.VITE_API_URL — http://localhost:3001 in dev */
   baseUrl: string;
   /**
-   * localStorage key for the JWT. Namespaced PER MODULE (e.g.
-   * "<slug>_token") — apps share *.mobiusboxing.com, colliding keys have
-   * bitten before (lesson: namespaced localStorage keys).
+   * Reads the ecosystem-wide session token. Pass `getToken` from
+   * `@mobius-modules/auth`: the session is a cookie on the parent domain, NOT
+   * a per-module localStorage key — a namespaced key is per-origin, which is
+   * precisely what stopped one login from reaching every app.
    */
-  tokenStorageKey: string;
+  getToken: () => string | null;
+  /** Ends that session locally. Pass `clearToken` from `@mobius-modules/auth`. */
+  clearToken: () => void;
   /**
    * Paths whose 401s are an inline result (login, password endpoints),
    * NOT session expiry — the caller renders them; the client must not
@@ -20,12 +23,12 @@ export interface ApiClientOptions {
 }
 
 export function createApiClient(options: ApiClientOptions): AxiosInstance {
-  const { baseUrl, tokenStorageKey, selfHandled401Paths = [], onSessionExpired } = options;
+  const { baseUrl, getToken, clearToken, selfHandled401Paths = [], onSessionExpired } = options;
 
   const client = axios.create({ baseURL: baseUrl });
 
   client.interceptors.request.use((config) => {
-    const token = localStorage.getItem(tokenStorageKey);
+    const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -39,7 +42,9 @@ export function createApiClient(options: ApiClientOptions): AxiosInstance {
       const url: string = error?.config?.url ?? "";
       const selfHandled = selfHandled401Paths.some((p) => url.includes(p));
       if (status === 401 && !selfHandled) {
-        localStorage.removeItem(tokenStorageKey);
+        // Ends the session for every app on the domain, which is correct: the
+        // server has just said this token is no longer good anywhere.
+        clearToken();
         onSessionExpired?.();
       }
       return Promise.reject(error);

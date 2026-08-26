@@ -1,7 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import {
+  clearCachedUser,
+  clearToken,
+  getToken,
+  readCachedUser,
+  setToken,
+  writeCachedUser,
+} from "@mobius-modules/auth";
 import type { ModuleEnablement } from "@mobius-modules/auth";
-import { api, TOKEN_KEY, USER_KEY } from "../api/client";
+import { api, USER_KEY } from "../api/client";
 import type { AuthUser } from "../types/api";
 
 /** Matches the `modules` row seeded by mobius-api and the /api/node-files mount. */
@@ -23,36 +31,30 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-function readStoredUser(): AuthUser | null {
-  const raw = localStorage.getItem(USER_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as AuthUser;
-  } catch {
-    localStorage.removeItem(USER_KEY);
-    return null;
-  }
-}
-
 /**
  * Mobius SSO: the module has no users of its own. The token comes from the
  * host's /api/auth/login and carries the company plus its enabled modules, so
  * both the session and the module gate are answered by the same round trip.
+ *
+ * That token IS the ecosystem session — the `mobius_session` cookie on
+ * `.mobiusboxing.com`, the same one the web app and the backoffice read. Signing
+ * in here signs you in everywhere; signing out here signs you out everywhere.
  *
  * (The "Q1 unresolved" comments still sitting in shared/auth are stale — the
  * question was answered on 2026-08-12 and this is the answer, copied from
  * countdown rather than invented a second time.)
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(readStoredUser);
+  const [user, setUser] = useState<AuthUser | null>(() => readCachedUser<AuthUser>(USER_KEY));
   const [loading, setLoading] = useState(true);
 
-  // Trust localStorage for the first paint, then confirm with the server — a
+  // Trust the cached user for the first paint, then confirm with the server — a
   // token expired since last visit must not leave a ghost session, and the
   // module list may have changed while the tab was closed.
   useEffect(() => {
     let cancelled = false;
-    if (!localStorage.getItem(TOKEN_KEY)) {
+    if (getToken() === null) {
+      setUser(null);
       setLoading(false);
       return;
     }
@@ -60,14 +62,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .me()
       .then((fresh) => {
         if (cancelled) return;
-        localStorage.setItem(USER_KEY, JSON.stringify(fresh));
+        writeCachedUser(USER_KEY, fresh);
         setUser(fresh);
       })
       .catch(() => {
-        if (cancelled) return;
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-        setUser(null);
+        // A 401 is already handled by the api client: it clears the shared
+        // session and sends the tab to /login. Anything else is a blip (offline,
+        // CORS, an API restarting) and must NOT sign the user out of every
+        // Mobius app — so the session is only dropped when the token is gone.
+        if (!cancelled && getToken() === null) setUser(null);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -77,16 +80,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // One session, many apps: the login or logout may have happened in another
+  // tab, on another subdomain. Re-read the cookie whenever this tab comes back
+  // to the front — adopt a session started elsewhere, drop one ended elsewhere.
+  useEffect(() => {
+    if (loading) return;
+    const sync = () => {
+      const signedIn = getToken() !== null;
+      if (signedIn && !user) {
+        api
+          .me()
+          .then((fresh) => {
+            writeCachedUser(USER_KEY, fresh);
+            setUser(fresh);
+          })
+          .catch(() => {});
+      } else if (!signedIn && user) {
+        clearCachedUser(USER_KEY);
+        setUser(null);
+      }
+    };
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [user, loading]);
+
   const login = useCallback(async (email: string, password: string) => {
     const result = await api.login(email, password);
-    localStorage.setItem(TOKEN_KEY, result.token);
-    localStorage.setItem(USER_KEY, JSON.stringify(result.user));
+    // Cookie first: the cached user is stamped with the token it belongs to.
+    setToken(result.token);
+    writeCachedUser(USER_KEY, result.user);
     setUser(result.user);
   }, []);
 
+  // Ends the session for every Mobius app on the domain, which is the other
+  // half of one login: a shared sign-in with a per-app sign-out would leave
+  // the user logged in somewhere they thought they had left.
   const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    clearToken();
+    clearCachedUser(USER_KEY);
     setUser(null);
   }, []);
 

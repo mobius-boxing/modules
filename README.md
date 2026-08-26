@@ -7,14 +7,16 @@ RBAC/audit pipeline. A module that needs real isolation gets spun out
 standalone (the rolpel treatment); that's the escape hatch, not the default.
 
 Design/plan: `mobius/modules.md` (workspace root — Modules v2). Open
-questions Q1–Q7 live there; **Q1 (who logs into the first module) is
-unresolved** and blocks everything session-shaped in `shared/auth`.
+questions Q1–Q7 live there; **Q1 (who logs into the first module) was
+answered 2026-08-12: internal mobius users**, so `shared/auth` owns the
+ecosystem session.
 
 ## Layout
-- `shared/api-client` — axios instance factory (token header, namespaced
-  localStorage key, self-handled-401 paths)
-- `shared/auth` — module boot gate + "not enabled" page (session plumbing
-  pending Q1)
+- `shared/api-client` — axios instance factory (token header from the shared
+  session, self-handled-401 paths)
+- `shared/auth` — the ecosystem session (`mobius_session` cookie on
+  `.mobiusboxing.com`, shared with the web app and the backoffice), the
+  module boot gate, and its "not enabled" / "wrong workspace" pages
 - `shared/whitelabel` — `{client}.{domain label}.mobiusboxing.com` hostname →
   client slug + branding fetch + `applyBranding` (see "Whitelabel" below).
   Dependency-free, no React; `npm test -w @mobius-modules/whitelabel`
@@ -60,8 +62,8 @@ One bundle, one distribution, branding resolved at runtime from the hostname.
 
 **The public domain label is not the module slug.** countdown is published as
 `{client}.vencimientos.mobiusboxing.com` (the label is what the customer reads)
-while its slug — API path `/api/countdown`, token key `countdown_token`, the
-`modules` row — stays `countdown`. `parseTenantFromHostname()` takes the label,
+while its slug — API path `/api/countdown`, user-cache key `countdown_user`,
+the `modules` row — stays `countdown`. `parseTenantFromHostname()` takes the label,
 never the slug; a module whose two names happen to match still passes both.
 
 **Resolution order** (`parseTenantFromHostname(hostname, opts)` → client slug or

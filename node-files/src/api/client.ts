@@ -1,6 +1,7 @@
 import axios from "axios";
 import type { AxiosInstance, AxiosResponse } from "axios";
 import { createApiClient } from "@mobius-modules/api-client";
+import { clearCachedUser, clearToken, dropLegacyToken, getToken } from "@mobius-modules/auth";
 import type {
   AuthUser,
   Credential,
@@ -29,9 +30,17 @@ const HOST = "/api";
 /** Everything the module owns hangs off its slug, behind requireModule(). */
 const MODULE = "/api/node-files";
 
-/** localStorage is shared across *.mobiusboxing.com — namespace every key. */
-export const TOKEN_KEY = "node-files_token";
+/**
+ * The session is NOT here: it is the `mobius_session` cookie on
+ * `.mobiusboxing.com` (see @mobius-modules/auth), shared with the web app, the
+ * backoffice and every other module. Only the first-paint user cache is
+ * per-origin — and localStorage is shared across *.mobiusboxing.com, so its key
+ * stays namespaced.
+ */
 export const USER_KEY = "node-files_user";
+
+/** Where the token lived before SSO. Dropped on load, never adopted. */
+dropLegacyToken("node-files_token");
 
 const FALLBACK_MESSAGE = "Error de conexión con el servidor";
 
@@ -68,10 +77,11 @@ function toApiError(error: unknown, fallback = FALLBACK_MESSAGE): ApiError {
  */
 const http: AxiosInstance = createApiClient({
   baseUrl: BASE,
-  tokenStorageKey: TOKEN_KEY,
+  getToken,
+  clearToken,
   selfHandled401Paths: [`${HOST}/auth/login`],
   onSessionExpired: () => {
-    localStorage.removeItem(USER_KEY);
+    clearCachedUser(USER_KEY);
     if (window.location.pathname !== "/login") window.location.assign("/login");
   },
 });

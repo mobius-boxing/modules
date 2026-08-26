@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { ModuleGate } from "@mobius-modules/auth";
+import { ModuleGate, WrongWorkspacePage, isTenantMismatch } from "@mobius-modules/auth";
 import { setOperatingCompanyUuid } from "./api/client";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -31,7 +31,7 @@ import { WorkspacePage } from "./pages/WorkspacePage";
  * every request is still authorized server-side from the JWT.
  */
 function ModuleBoundary({ children }: { children: ReactNode }) {
-  const { moduleStatus, user } = useAuth();
+  const { moduleStatus, user, logout } = useAuth();
   const branding = useBranding();
   const isSuperAdmin = user?.role === "superAdmin";
   const tenantCompanyUuid = branding?.companyUuid ?? null;
@@ -40,6 +40,13 @@ function ModuleBoundary({ children }: { children: ReactNode }) {
     setOperatingCompanyUuid(isSuperAdmin ? tenantCompanyUuid : null);
     return () => setOperatingCompanyUuid(null);
   }, [isSuperAdmin, tenantCompanyUuid]);
+
+  // Signed in, but as somebody from another company: the shared session made
+  // that reachable, so it has to be answered here (isTenantMismatch explains
+  // why, and why superAdmins are exempt).
+  if (isTenantMismatch(user, tenantCompanyUuid)) {
+    return <WrongWorkspacePage onSignOut={logout} />;
+  }
 
   const status =
     isSuperAdmin && tenantCompanyUuid !== null ? "enabled" : moduleStatus;
