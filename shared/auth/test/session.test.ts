@@ -14,14 +14,17 @@ import { test } from "node:test";
 import {
   buildSessionCookie,
   clearToken,
+  deviceNotApprovedCopy,
   getDeviceToken,
   getToken,
   readCachedUser,
+  requestDevice,
   sessionCookieDomain,
   setDeviceToken,
   setToken,
   writeCachedUser,
 } from "../src/session.ts";
+import type { DeviceSession } from "../src/session.ts";
 
 const HTTPS = { protocol: "https:" };
 
@@ -157,4 +160,83 @@ test("the cached user never carries the device session", () => {
   const stored = storage.get("countdown_user") ?? "";
   assert.doesNotMatch(stored, /device|c{64}/);
   assert.deepEqual(readCachedUser("countdown_user"), { uuid: "u1", email: "ana@acme.test" });
+});
+
+test("requestDevice stores a token it is handed and never returns it", async () => {
+  const pending = {
+    uuid: "d1",
+    status: "pending" as const,
+    requestedAt: "2026-09-14T09:12:40.000Z",
+    approvedAt: null,
+    revokedAt: null,
+    token: "e".repeat(64),
+  };
+  const session = await requestDevice(async () => ({ data: { data: pending } }));
+
+  assert.equal(getDeviceToken(), "e".repeat(64));
+  assert.equal(session?.token, undefined);
+  assert.deepEqual(session, { ...pending, token: undefined });
+});
+
+test("requestDevice touches no cookie on a repeat call that mints no secret", async () => {
+  // Case 1 of the registration procedure: a known, still-pending row is
+  // returned unchanged and carries no `token` at all.
+  const before = getDeviceToken();
+  const pending = {
+    uuid: "d1",
+    status: "pending" as const,
+    requestedAt: "2026-09-14T09:12:40.000Z",
+    approvedAt: null,
+    revokedAt: null,
+  };
+  const session = await requestDevice(async () => ({ data: { data: pending } }));
+
+  assert.equal(getDeviceToken(), before);
+  // `token` is always spread onto the result (even as `undefined`), matching
+  // the same strip used after login (D-134) — asserted explicitly here so a
+  // future refactor can't quietly start omitting the key instead.
+  assert.deepEqual(session, { ...pending, token: undefined });
+});
+
+test("requestDevice passes an admin's null straight through", async () => {
+  const session = await requestDevice(async () => ({ data: { data: null } }));
+  assert.equal(session, null);
+});
+
+test("deviceNotApprovedCopy: only the genuinely in-flight moment is 'loading'", () => {
+  assert.equal(deviceNotApprovedCopy(null, false, true), "loading");
+});
+
+test("deviceNotApprovedCopy: a failed auto-request settles onto a real screen, not 'loading' forever", () => {
+  // M1: the component used to return the loading branch whenever `session`
+  // was `null`, which a failed request never stops being true for.
+  const copy = deviceNotApprovedCopy(null, true, false);
+  assert.notEqual(copy, "loading");
+  assert.equal((copy as { heading: string }).heading, "Dispositivo no registrado");
+});
+
+test("deviceNotApprovedCopy: no requestDevice wired settles the same way (never requesting, never failed)", () => {
+  const copy = deviceNotApprovedCopy(null, false, false);
+  assert.notEqual(copy, "loading");
+  assert.equal((copy as { heading: string }).heading, "Dispositivo no registrado");
+});
+
+test("deviceNotApprovedCopy: a known pending or revoked session keeps its own heading", () => {
+  const revokedSession: DeviceSession = {
+    uuid: "d1",
+    status: "revoked",
+    requestedAt: "2026-09-14T09:12:40.000Z",
+    approvedAt: null,
+    revokedAt: "2026-09-14T10:00:00.000Z",
+  };
+  const pendingSession: DeviceSession = { ...revokedSession, status: "pending", revokedAt: null };
+
+  assert.equal(
+    (deviceNotApprovedCopy(revokedSession, false, false) as { heading: string }).heading,
+    "Dispositivo revocado",
+  );
+  assert.equal(
+    (deviceNotApprovedCopy(pendingSession, false, false) as { heading: string }).heading,
+    "Dispositivo pendiente de aprobación",
+  );
 });

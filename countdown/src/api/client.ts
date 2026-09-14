@@ -7,6 +7,7 @@ import {
   dropLegacyToken,
   getDeviceToken,
   getToken,
+  requestDevice as requestDeviceSession,
   setDeviceToken,
 } from "@mobius-modules/auth";
 import type { DeviceSession } from "@mobius-modules/auth";
@@ -204,6 +205,20 @@ export const api = {
 
   me(): Promise<AuthUser> {
     return unwrap(http.get<{ data: AuthUser }>(`${HOST}/auth/me`));
+  },
+
+  /**
+   * Registers this browser for the signed-in member (gate amendment 3,
+   * D-230) — for a `mobius_session` that survived a deploy with no local
+   * device row, since nothing else will ever create one. `ModuleGate` calls
+   * this once automatically when `device` comes back `null` for a member, and
+   * again from the waiting page's retry button (also how a `revoked` device
+   * re-requests, I-19).
+   */
+  requestDevice(): Promise<DeviceSession | null> {
+    return requestDeviceSession(() =>
+      http.post<{ data: DeviceSession | null }>(`${HOST}/auth/device`),
+    );
   },
 
   // ---- documents ----

@@ -22,6 +22,14 @@
  * authority it did not already have — a request without the header is still 401.
  */
 
+/**
+ * `DeviceSession` lives in `./index.tsx` (it is also `ModuleGate`'s prop
+ * type). A type-only import costs nothing at runtime — this file stays
+ * importable by node's native TypeScript runner, which only strips types and
+ * cannot parse the JSX elsewhere in that file.
+ */
+import type { DeviceSession } from "./index.tsx";
+
 export const SESSION_COOKIE = "mobius_session";
 
 /** In step with mobius-web-app / mobius-backoffice-app. The API still enforces JWT expiry. */
@@ -116,6 +124,80 @@ export function setDeviceToken(token: string): void {
     DEVICE_MAX_AGE_SECONDS,
     window.location,
   );
+}
+
+/**
+ * The shape of `POST /api/auth/device`'s body, as far as `requestDevice` needs
+ * it. Not `AxiosResponse<...>`: this package has no axios dependency (the
+ * pattern throughout, see `ApiClientOptions` in `@mobius-modules/api-client`),
+ * so callers pass their own client's post call and only the two nested `data`
+ * keys of the envelope are asserted on.
+ */
+interface DeviceEndpointResponse {
+  data: { data: DeviceSession | null };
+}
+
+/**
+ * Registers this browser for the signed-in member without a fresh login (gate
+ * amendment 3, D-230) — for a `mobius_session` that survived a deploy with no
+ * local device row, nothing else will ever create one. Stores `token`
+ * immediately (case 3: the API will not produce it again) and strips it before
+ * it reaches a caller that might render or cache the result (D-134 discipline).
+ *
+ * `admin`/`superAdmin` get `data: null` and this resolves to `null`, same as
+ * the login/`me` shapes (I-18).
+ */
+export async function requestDevice(
+  post: () => Promise<DeviceEndpointResponse>,
+): Promise<DeviceSession | null> {
+  const {
+    data: { data: session },
+  } = await post();
+  if (session === null) return null;
+  if (session.token) setDeviceToken(session.token);
+  return { ...session, token: undefined };
+}
+
+export interface DeviceNotApprovedCopy {
+  heading: string;
+  description: string;
+}
+
+/**
+ * Pure decision logic for `DeviceNotApprovedPage`, factored out of the
+ * component so it can be tested (and mutation-checked) without mounting
+ * anything — this package's tests run through node's native TypeScript
+ * runner, which cannot render JSX at all. `"loading"` is deliberately the only
+ * state that hides the heading, description and button: a failed auto-request
+ * or a caller that never wired `requestDevice` must still land on a real
+ * screen with something to read and, where possible, a button to press (M1 —
+ * the previous version returned the loading branch whenever `session` was
+ * still `null`, which is also true forever in both of those cases).
+ */
+export function deviceNotApprovedCopy(
+  session: DeviceSession | null,
+  requestFailed: boolean,
+  requesting: boolean,
+): "loading" | DeviceNotApprovedCopy {
+  if (session === null && !requestFailed && requesting) return "loading";
+
+  const revoked = session?.status === "revoked";
+  return {
+    heading:
+      session === null
+        ? "Dispositivo no registrado"
+        : revoked
+          ? "Dispositivo revocado"
+          : "Dispositivo pendiente de aprobación",
+    description:
+      session === null
+        ? "No pudimos registrar este navegador ante Mobius."
+        : revoked
+          ? "Un administrador revocó el acceso de este navegador. Pide que lo aprueben de " +
+            "nuevo para volver a entrar."
+          : "Un administrador de tu empresa debe aprobar este navegador antes de que puedas " +
+            "usar el módulo.",
+  };
 }
 
 /*
