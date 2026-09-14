@@ -17,6 +17,7 @@ import {
   getDeviceToken,
   getToken,
   readCachedUser,
+  requestDevice,
   sessionCookieDomain,
   setDeviceToken,
   setToken,
@@ -157,4 +158,45 @@ test("the cached user never carries the device session", () => {
   const stored = storage.get("countdown_user") ?? "";
   assert.doesNotMatch(stored, /device|c{64}/);
   assert.deepEqual(readCachedUser("countdown_user"), { uuid: "u1", email: "ana@acme.test" });
+});
+
+test("requestDevice stores a token it is handed and never returns it", async () => {
+  const pending = {
+    uuid: "d1",
+    status: "pending" as const,
+    requestedAt: "2026-09-14T09:12:40.000Z",
+    approvedAt: null,
+    revokedAt: null,
+    token: "e".repeat(64),
+  };
+  const session = await requestDevice(async () => ({ data: { data: pending } }));
+
+  assert.equal(getDeviceToken(), "e".repeat(64));
+  assert.equal(session?.token, undefined);
+  assert.deepEqual(session, { ...pending, token: undefined });
+});
+
+test("requestDevice touches no cookie on a repeat call that mints no secret", async () => {
+  // Case 1 of the registration procedure: a known, still-pending row is
+  // returned unchanged and carries no `token` at all.
+  const before = getDeviceToken();
+  const pending = {
+    uuid: "d1",
+    status: "pending" as const,
+    requestedAt: "2026-09-14T09:12:40.000Z",
+    approvedAt: null,
+    revokedAt: null,
+  };
+  const session = await requestDevice(async () => ({ data: { data: pending } }));
+
+  assert.equal(getDeviceToken(), before);
+  // `token` is always spread onto the result (even as `undefined`), matching
+  // the same strip used after login (D-134) — asserted explicitly here so a
+  // future refactor can't quietly start omitting the key instead.
+  assert.deepEqual(session, { ...pending, token: undefined });
+});
+
+test("requestDevice passes an admin's null straight through", async () => {
+  const session = await requestDevice(async () => ({ data: { data: null } }));
+  assert.equal(session, null);
 });

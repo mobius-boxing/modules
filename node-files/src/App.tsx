@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ModuleGate, WrongWorkspacePage, isTenantMismatch } from "@mobius-modules/auth";
-import { setOperatingCompanyUuid } from "./api/client";
+import { api, setOperatingCompanyUuid } from "./api/client";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -55,6 +55,8 @@ function ModuleBoundary({ children }: { children: ReactNode }) {
     <ModuleGate
       status={status}
       device={user?.device ?? null}
+      role={user?.role}
+      requestDevice={api.requestDevice}
       fallback={<div className="page-loading">Cargando…</div>}
     >
       {children}

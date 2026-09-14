@@ -22,6 +22,14 @@
  * authority it did not already have — a request without the header is still 401.
  */
 
+/**
+ * `DeviceSession` lives in `./index.tsx` (it is also `ModuleGate`'s prop
+ * type). A type-only import costs nothing at runtime — this file stays
+ * importable by node's native TypeScript runner, which only strips types and
+ * cannot parse the JSX elsewhere in that file.
+ */
+import type { DeviceSession } from "./index.tsx";
+
 export const SESSION_COOKIE = "mobius_session";
 
 /** In step with mobius-web-app / mobius-backoffice-app. The API still enforces JWT expiry. */
@@ -116,6 +124,38 @@ export function setDeviceToken(token: string): void {
     DEVICE_MAX_AGE_SECONDS,
     window.location,
   );
+}
+
+/**
+ * The shape of `POST /api/auth/device`'s body, as far as `requestDevice` needs
+ * it. Not `AxiosResponse<...>`: this package has no axios dependency (the
+ * pattern throughout, see `ApiClientOptions` in `@mobius-modules/api-client`),
+ * so callers pass their own client's post call and only the two nested `data`
+ * keys of the envelope are asserted on.
+ */
+interface DeviceEndpointResponse {
+  data: { data: DeviceSession | null };
+}
+
+/**
+ * Registers this browser for the signed-in member without a fresh login (gate
+ * amendment 3, D-230) — for a `mobius_session` that survived a deploy with no
+ * local device row, nothing else will ever create one. Stores `token`
+ * immediately (case 3: the API will not produce it again) and strips it before
+ * it reaches a caller that might render or cache the result (D-134 discipline).
+ *
+ * `admin`/`superAdmin` get `data: null` and this resolves to `null`, same as
+ * the login/`me` shapes (I-18).
+ */
+export async function requestDevice(
+  post: () => Promise<DeviceEndpointResponse>,
+): Promise<DeviceSession | null> {
+  const {
+    data: { data: session },
+  } = await post();
+  if (session === null) return null;
+  if (session.token) setDeviceToken(session.token);
+  return { ...session, token: undefined };
 }
 
 /*

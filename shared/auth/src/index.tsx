@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 /*
  * Who logs into a module (modules.md Q1) is settled: internal mobius users.
@@ -39,23 +39,44 @@ export interface ModuleGateProps {
    * approved replaces the module with the waiting page: every other call would
    * answer 403, so the shell would otherwise render a screen of errors.
    *
-   * `null` passes straight through, and that is deliberate: it is what an admin
-   * and a superAdmin always get (neither is ever gated), and this component
-   * cannot tell them apart from a member whose browser the API does not
-   * recognise (DEVICE_UNKNOWN) — the role is not here. Nothing this component
-   * renders can recover it: only a fresh login mints a secret (the module's own
-   * login page does), and the web app drives that by dropping the session on
-   * DEVICE_UNKNOWN.
+   * `null` on its own is ambiguous between an admin/superAdmin (never gated,
+   * this is their permanent value) and a member with no row yet — the role is
+   * not carried on the session type. `role` below resolves that.
    */
   device?: DeviceSession | null;
+  /**
+   * From /api/auth/me, so `device === null` can be read correctly: for a
+   * `member` it means "no row yet" (gate amendment 3 registers one via
+   * `requestDevice`); for anyone else `null` is permanent and passes through.
+   * Omit it and a `member`'s `null` passes through too, matching this
+   * component's behaviour before gate amendment 3.
+   */
+  role?: "member" | "admin" | "superAdmin";
+  /**
+   * `POST /api/auth/device`, wired to the caller's own client (this package
+   * has no axios dependency — see `requestDevice`'s own doc). Required to
+   * register a member's browser automatically or to offer the waiting page's
+   * retry button; without it the page still renders but neither can happen.
+   */
+  requestDevice?: () => Promise<DeviceSession | null>;
 }
 
 /** Boot gate: renders the module only when it is enabled for the company. */
-export function ModuleGate({ status, children, fallback = null, device }: ModuleGateProps) {
+export function ModuleGate({
+  status,
+  children,
+  fallback = null,
+  device,
+  role,
+  requestDevice: requestDeviceFn,
+}: ModuleGateProps) {
   if (status === "loading") return <>{fallback}</>;
   if (status === "disabled") return <NotEnabledPage />;
+  if (role === "member" && device === null) {
+    return <DeviceNotApprovedPage device={null} requestDevice={requestDeviceFn} />;
+  }
   if (device != null && device.status !== "approved") {
-    return <DeviceNotApprovedPage device={device} />;
+    return <DeviceNotApprovedPage device={device} requestDevice={requestDeviceFn} />;
   }
   return <>{children}</>;
 }
@@ -84,15 +105,55 @@ export function NotEnabledPage() {
 }
 
 /**
- * This browser is waiting for an admin to approve it (or has been revoked).
+ * This browser is waiting for an admin to approve it, has been revoked, or (a
+ * `null` `device`) has no row at all yet.
  *
- * Approval happens in the web app only (one queue, one place to look), so this
- * page says where to go and stops there: no polling — the member reloads once
- * the admin says go — and no approve control, which a member could not use
- * anyway.
+ * Approval itself happens in the web app only (one queue, one place to look),
+ * so this page never polls and offers no approve control, which a member
+ * could not use anyway. What it does do, since gate amendment 3 (D-230): a
+ * `null` device means nothing has ever asked the API to create a row for this
+ * browser, so it asks once on mount, and the "Solicitar aprobación" button
+ * repeats that same call — the only way out of `revoked` too (I-19's
+ * revoked → pending re-request), since a module has no login page of its own
+ * to force a re-login through.
  */
-export function DeviceNotApprovedPage({ device }: { device: DeviceSession }) {
-  const revoked = device.status === "revoked";
+export function DeviceNotApprovedPage({
+  device,
+  requestDevice: requestDeviceFn,
+}: {
+  device: DeviceSession | null;
+  requestDevice?: () => Promise<DeviceSession | null>;
+}) {
+  const [session, setSession] = useState<DeviceSession | null>(device);
+  const [requestFailed, setRequestFailed] = useState(false);
+  // Guards the auto-request on mount independently of `session`: the request
+  // always resolves to a session (case 3 mints one), so gating on "session is
+  // still null" would look identical to "never asked" and can't tell a slow
+  // response apart from one worth retrying automatically.
+  const autoRequested = useRef(false);
+
+  const request = useCallback(() => {
+    if (!requestDeviceFn) return;
+    setRequestFailed(false);
+    requestDeviceFn().then(setSession).catch(() => setRequestFailed(true));
+  }, [requestDeviceFn]);
+
+  useEffect(() => {
+    if (device === null && !autoRequested.current) {
+      autoRequested.current = true;
+      request();
+    }
+  }, [device, request]);
+
+  if (session === null) {
+    return (
+      <main style={SHELL_STYLE}>
+        <p>Solicitando aprobación…</p>
+      </main>
+    );
+  }
+
+  const revoked = session.status === "revoked";
   return (
     <main style={SHELL_STYLE}>
       <div style={{ textAlign: "center" }}>
@@ -104,6 +165,12 @@ export function DeviceNotApprovedPage({ device }: { device: DeviceSession }) {
             : "Un administrador de tu empresa debe aprobar este navegador antes de que puedas " +
               "usar el módulo."}
         </p>
+        {requestFailed ? <p>No se pudo solicitar la aprobación. Intenta de nuevo.</p> : null}
+        {requestDeviceFn ? (
+          <button type="button" onClick={request}>
+            Solicitar aprobación
+          </button>
+        ) : null}
         <p>
           La aprobación se hace desde la aplicación principal de Mobius. Luego recarga esta
           página.
