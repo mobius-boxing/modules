@@ -8,6 +8,8 @@
  * a route the API does not publish.
  */
 
+import type { DeviceSession } from "@mobius-modules/auth";
+
 /** Mobius roles. The module has no roles of its own — identity is the host's. */
 export type UserRole = "member" | "admin" | "superAdmin";
 
@@ -25,6 +27,12 @@ export interface AuthUser {
   modules: string[];
   /** RBAC permission codes. Advisory: the server re-checks every write. */
   permissions: string[];
+  /**
+   * This browser, as the API sees it. Members only: an admin is never gated and
+   * always gets `null`. Absent on a cached user — a device session is live state
+   * and is never stored (see writeCachedUser).
+   */
+  device?: DeviceSession | null;
 }
 
 /** What the topbar prints. Falls back to the email for a nameless account. */

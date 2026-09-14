@@ -2,16 +2,59 @@
  * Run with `npm test -w @mobius-modules/auth` (node's built-in test runner +
  * native TS type stripping — no jest, no dependencies).
  *
- * Only the pure half of session.ts is covered here: the cookie the browser is
- * asked to write. It is the half that decides whether one login reaches every
- * app, and the half a wrong answer breaks silently — a host-only cookie looks
- * exactly like a working session until you open a second subdomain.
+ * Mostly the pure half of session.ts: the cookie the browser is asked to write.
+ * It is the half that decides whether one login reaches every app, and the half
+ * a wrong answer breaks silently — a host-only cookie looks exactly like a
+ * working session until you open a second subdomain. The device cookie and the
+ * user cache need a browser, so the last three cases run against the stubs
+ * below.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildSessionCookie, sessionCookieDomain } from "../src/session.ts";
+import {
+  buildSessionCookie,
+  clearToken,
+  getDeviceToken,
+  getToken,
+  readCachedUser,
+  sessionCookieDomain,
+  setDeviceToken,
+  setToken,
+  writeCachedUser,
+} from "../src/session.ts";
 
 const HTTPS = { protocol: "https:" };
+
+const jar = new Map<string, string>();
+let lastCookieWrite = "";
+const storage = new Map<string, string>();
+
+globalThis.document = {
+  get cookie() {
+    return [...jar].map(([name, value]) => `${name}=${value}`).join("; ");
+  },
+  set cookie(written: string) {
+    lastCookieWrite = written;
+    const [name, value] = written.split(";")[0].split("=");
+    // A browser deletes on max-age=0, which is how clearToken works.
+    if (/max-age=0(;|$)/.test(written)) jar.delete(name);
+    else jar.set(name, value);
+  },
+} as unknown as Document;
+
+globalThis.window = {
+  location: { hostname: "acme.vencimientos.mobiusboxing.com", protocol: "https:" },
+} as unknown as Window & typeof globalThis;
+
+globalThis.localStorage = {
+  getItem: (key: string) => storage.get(key) ?? null,
+  setItem: (key: string, value: string) => {
+    storage.set(key, value);
+  },
+  removeItem: (key: string) => {
+    storage.delete(key);
+  },
+} as unknown as Storage;
 
 test("every Mobius host shares one parent-domain cookie", () => {
   for (const host of [
@@ -77,4 +120,41 @@ test("clearing uses the same scope as writing, or the cookie survives", () => {
       .slice(1);
   assert.deepEqual(scope(cleared), scope(written));
   assert.ok(cleared.includes("max-age=0"), cleared);
+});
+
+test("the device cookie lasts a year on the shared parent domain", () => {
+  setDeviceToken("a".repeat(64));
+  assert.equal(
+    lastCookieWrite,
+    `mobius_device=${"a".repeat(64)}; path=/; max-age=31536000; ` +
+      "samesite=lax; domain=.mobiusboxing.com; secure",
+  );
+});
+
+test("a session ending does not end the browser's approval", () => {
+  setToken("jwt.header.payload");
+  setDeviceToken("b".repeat(64));
+  // Two cookies, two readers: neither helper may answer with the other's value.
+  assert.equal(getDeviceToken(), "b".repeat(64));
+  assert.equal(getToken(), "jwt.header.payload");
+
+  clearToken();
+  assert.equal(getToken(), null);
+  assert.equal(getDeviceToken(), "b".repeat(64));
+});
+
+test("the cached user never carries the device session", () => {
+  setToken("jwt.header.payload");
+  writeCachedUser("countdown_user", {
+    uuid: "u1",
+    email: "ana@acme.test",
+    device: { uuid: "d1", status: "pending", token: "c".repeat(64) },
+  });
+
+  // On login the session carries the raw device secret — the credential itself —
+  // and an admin flips the status without this tab knowing. Neither belongs in
+  // storage.
+  const stored = storage.get("countdown_user") ?? "";
+  assert.doesNotMatch(stored, /device|c{64}/);
+  assert.deepEqual(readCachedUser("countdown_user"), { uuid: "u1", email: "ana@acme.test" });
 });

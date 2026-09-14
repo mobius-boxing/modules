@@ -1,7 +1,15 @@
 import axios from "axios";
 import type { AxiosInstance, AxiosResponse } from "axios";
 import { createApiClient } from "@mobius-modules/api-client";
-import { clearCachedUser, clearToken, dropLegacyToken, getToken } from "@mobius-modules/auth";
+import {
+  clearCachedUser,
+  clearToken,
+  dropLegacyToken,
+  getDeviceToken,
+  getToken,
+  setDeviceToken,
+} from "@mobius-modules/auth";
+import type { DeviceSession } from "@mobius-modules/auth";
 import type {
   AuthUser,
   Credential,
@@ -79,6 +87,7 @@ const http: AxiosInstance = createApiClient({
   baseUrl: BASE,
   getToken,
   clearToken,
+  getDeviceToken,
   selfHandled401Paths: [`${HOST}/auth/login`],
   onSessionExpired: () => {
     clearCachedUser(USER_KEY);
@@ -178,13 +187,26 @@ function toParams(
 export const api = {
   // ---- identity (host endpoints, not the module's) ----
 
+  /**
+   * Stores the device secret, which is why this is not a plain `unwrap`: the API
+   * returns it exactly once (it keeps only the hash), and a browser that never
+   * stored it cannot prove it is the same browser — every later call answers
+   * 403 DEVICE_UNKNOWN and every retry leaves one more pending row for an admin
+   * to approve. `device` also rides back on the user so the shell can show the
+   * waiting page without waiting for a reload.
+   */
   login(email: string, password: string): Promise<{ user: AuthUser; token: string }> {
     return unwrap(
-      http.post<{ data: { user: AuthUser; token: string } }>(`${HOST}/auth/login`, {
-        email,
-        password,
-      }),
-    );
+      http.post<{ data: { user: AuthUser; token: string; device?: DeviceSession | null } }>(
+        `${HOST}/auth/login`,
+        { email, password },
+      ),
+    ).then(({ user, token, device }) => {
+      if (device?.token) setDeviceToken(device.token);
+      // The cookie is the only holder of the raw secret: it is dropped here so
+      // it never sits in React state (or anything rendered from it).
+      return { user: { ...user, device: device ? { ...device, token: undefined } : null }, token };
+    });
   },
 
   me(): Promise<AuthUser> {

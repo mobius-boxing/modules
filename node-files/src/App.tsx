@@ -52,7 +52,11 @@ function ModuleBoundary({ children }: { children: ReactNode }) {
   const status = isSuperAdmin && tenantCompanyUuid !== null ? "enabled" : moduleStatus;
 
   return (
-    <ModuleGate status={status} fallback={<div className="page-loading">Cargando…</div>}>
+    <ModuleGate
+      status={status}
+      device={user?.device ?? null}
+      fallback={<div className="page-loading">Cargando…</div>}
+    >
       {children}
     </ModuleGate>
   );

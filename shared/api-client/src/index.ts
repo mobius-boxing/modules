@@ -13,6 +13,13 @@ export interface ApiClientOptions {
   /** Ends that session locally. Pass `clearToken` from `@mobius-modules/auth`. */
   clearToken: () => void;
   /**
+   * Reads the device secret an admin approved for this browser. Pass
+   * `getDeviceToken` from `@mobius-modules/auth`: without the header the API
+   * answers 403 DEVICE_UNKNOWN to every call a member makes, whatever the
+   * session says.
+   */
+  getDeviceToken?: () => string | null;
+  /**
    * Paths whose 401s are an inline result (login, password endpoints),
    * NOT session expiry — the caller renders them; the client must not
    * clear auth for these.
@@ -23,7 +30,14 @@ export interface ApiClientOptions {
 }
 
 export function createApiClient(options: ApiClientOptions): AxiosInstance {
-  const { baseUrl, getToken, clearToken, selfHandled401Paths = [], onSessionExpired } = options;
+  const {
+    baseUrl,
+    getToken,
+    clearToken,
+    getDeviceToken,
+    selfHandled401Paths = [],
+    onSessionExpired,
+  } = options;
 
   const client = axios.create({ baseURL: baseUrl });
 
@@ -31,6 +45,10 @@ export function createApiClient(options: ApiClientOptions): AxiosInstance {
     const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    const deviceToken = getDeviceToken?.();
+    if (deviceToken) {
+      config.headers["X-Device-Token"] = deviceToken;
     }
     return config;
   });
