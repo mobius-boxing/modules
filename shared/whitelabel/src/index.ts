@@ -28,6 +28,14 @@ export interface WhitelabelBranding {
    * colour is null too, and then the CSS defaults stand for both.
    */
   accentColor: string | null;
+  /**
+   * App chrome (the module top bar). Always a concrete `#rrggbb`: the endpoint
+   * resolves the default rather than sending null, so a module never has to
+   * carry its own copy of what "unbranded" looks like.
+   */
+  shellColor: string | null;
+  /** Page background. Same contract as shellColor. */
+  canvasColor: string | null;
   /** Absolute URL, or null. */
   logoUrl: string | null;
   /** Extra line for the login screen, or null. */
@@ -148,6 +156,17 @@ function readBranding(body: unknown): WhitelabelBranding | null {
     displayName,
     brandColor: brand,
     accentColor: accentColor !== null && parseHex(accentColor) !== null ? accentColor : brand,
+    // Same fail-soft rule as the brand colour: an older API that sends neither,
+    // or sends junk, degrades to the stylesheet defaults rather than pushing an
+    // invalid value into a style attribute.
+    shellColor: (() => {
+      const v = readString(record.shellColor);
+      return v !== null && parseHex(v) !== null ? v : null;
+    })(),
+    canvasColor: (() => {
+      const v = readString(record.canvasColor);
+      return v !== null && parseHex(v) !== null ? v : null;
+    })(),
     logoUrl: readString(record.logoUrl),
     loginMessage: readString(record.loginMessage),
   };
@@ -280,6 +299,38 @@ export function deriveBrandRamp(brandColor: string): BrandRamp | null {
   };
 }
 
+/** The tokens a surface colour drives: the fill plus foregrounds that survive on it. */
+export interface SurfaceRamp {
+  /** The surface itself. */
+  base: string;
+  /** Primary text/icons on it. */
+  ink: string;
+  /** Secondary text on it — muted, but still legible. */
+  inkMuted: string;
+  /** Hairlines and dividers on it. */
+  line: string;
+}
+
+/**
+ * One surface colour in, four out.
+ *
+ * The chrome is the one surface a tenant can make either very dark or very
+ * light, and the stylesheet cannot know which. Deriving the foregrounds from
+ * the chosen colour is what stops a pale shell from rendering white-on-white:
+ * above the 0.5 luminance crossover the inks flip to near-black.
+ */
+export function deriveSurfaceRamp(surfaceColor: string): SurfaceRamp | null {
+  const rgb = parseHex(surfaceColor);
+  if (rgb === null) return null;
+  const isLight = relativeLuminance(rgb) > 0.5;
+  return {
+    base: toHex(rgb),
+    ink: isLight ? "#14120f" : "#f5f3ef",
+    inkMuted: isLight ? "#57534e" : "#a8a29a",
+    line: isLight ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.12)",
+  };
+}
+
 export interface ApplyBrandingOptions {
   /** Appended to the tenant name: "Acme — Documentos por vencer". */
   titleSuffix?: string;
@@ -352,6 +403,32 @@ export function applyBranding(
     root.style.setProperty("--accent-soft", accentRamp.soft);
     root.style.setProperty("--accent-tint", accentRamp.tint);
     root.style.setProperty("--accent-ink", accentRamp.ink);
+  }
+
+  // Chrome. Foregrounds are derived, not assumed, so a light shell colour does
+  // not produce white-on-white in the top bar.
+  // typeof, not `!== null`: an older API (or a hand-built object in a test)
+  // simply omits these, and `undefined !== null` is true — which would hand
+  // deriveSurfaceRamp an undefined and throw out of a function whose whole
+  // contract is that it never breaks the page.
+  const shellRamp =
+    typeof branding.shellColor === "string"
+      ? deriveSurfaceRamp(branding.shellColor)
+      : null;
+  if (shellRamp !== null) {
+    const root = document.documentElement;
+    root.style.setProperty("--gd-shell", shellRamp.base);
+    root.style.setProperty("--gd-shell-ink", shellRamp.ink);
+    root.style.setProperty("--gd-shell-ink-2", shellRamp.inkMuted);
+    root.style.setProperty("--gd-shell-line", shellRamp.line);
+  }
+
+  // Page background. Only the fill: --ink* stay the stylesheet's, because the
+  // canvas is meant to be a near-paper tint and flipping body text on it would
+  // be a far bigger change than a tenant picking a background implies.
+  if (typeof branding.canvasColor === "string" && parseHex(branding.canvasColor) !== null) {
+    const root = document.documentElement;
+    root.style.setProperty("--canvas", branding.canvasColor);
   }
 
   const name = branding.displayName.trim();
