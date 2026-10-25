@@ -13,6 +13,10 @@ interface ImportMetaEnv {
    * production build — the hostname is the source of truth there.
    */
   readonly VITE_TENANT?: string;
+  /** Environment root domain, e.g. "dev.mobiusboxing.com". Unset means "mobiusboxing.com". */
+  readonly VITE_BASE_DOMAIN?: string;
+  /** Session/device cookie name prefix. Unset means "mobius". */
+  readonly VITE_COOKIE_PREFIX?: string;
 }
 
 interface ImportMeta {

@@ -30,7 +30,16 @@
  */
 import type { DeviceSession } from "./index.tsx";
 
-export const SESSION_COOKIE = "mobius_session";
+/**
+ * Build-time config, read defensively: this file is also loaded by node's
+ * native TypeScript runner (tests), where `import.meta.env` does not exist.
+ */
+const BUILD_ENV = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
+
+/** Dev builds set VITE_COOKIE_PREFIX=mobius_dev so a prod cookie is never read as a dev session. */
+const COOKIE_PREFIX = BUILD_ENV.VITE_COOKIE_PREFIX || "mobius";
+
+export const SESSION_COOKIE = `${COOKIE_PREFIX}_session`;
 
 /** In step with mobius-web-app / mobius-backoffice-app. The API still enforces JWT expiry. */
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
@@ -40,14 +49,14 @@ const MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
  * subdomain of it, and the backoffice composes module URLs from the same
  * constant (`utils/moduleUrl.ts`).
  *
- * Derived from the address rather than baked into each module's build on
- * purpose: a module deployed without the right env var would silently fall back
- * to a host-only cookie and reproduce exactly the bug this file fixes.
+ * Build-time (`VITE_BASE_DOMAIN`) so a dev build scopes its cookie to
+ * `.dev.mobiusboxing.com`; unset means production's domain, so a prod build
+ * needs no extra config.
  */
-const ROOT_DOMAIN = "mobiusboxing.com";
+const ROOT_DOMAIN = BUILD_ENV.VITE_BASE_DOMAIN || "mobiusboxing.com";
 
 /**
- * `.mobiusboxing.com` on any Mobius host; null anywhere else (localhost, a
+ * `.${ROOT_DOMAIN}` on any Mobius host; null anywhere else (localhost, a
  * `*.cloudfront.net` preview) — a host-only cookie. Browsers ignore the port in
  * cookie scope, so host-only still shares one session across the dev servers.
  */
@@ -108,7 +117,7 @@ export function dropLegacyToken(key: string): void {
  * signing out does not turn this into a different browser — and for the reason
  * at the top of this file it is not a localStorage key either.
  */
-export const DEVICE_COOKIE = "mobius_device";
+export const DEVICE_COOKIE = `${COOKIE_PREFIX}_device`;
 
 /** The approval belongs to the browser, not to the session. */
 const DEVICE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;

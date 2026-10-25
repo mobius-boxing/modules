@@ -64,6 +64,16 @@ test("honours a custom base domain", () => {
   assert.equal(parseTenantFromHostname("acme.vencimientos.example.test", OPTS), null);
 });
 
+test("resolves a tenant under the dev base domain", () => {
+  assert.equal(
+    parseTenantFromHostname("acme.vencimientos.dev.mobiusboxing.com", {
+      ...OPTS,
+      baseDomain: "dev.mobiusboxing.com",
+    }),
+    "acme",
+  );
+});
+
 test("rejects labels that are not DNS-safe", () => {
   assert.equal(parseTenantFromHostname("ac_me.vencimientos.mobiusboxing.com", OPTS), null);
   assert.equal(parseTenantFromHostname("-acme.vencimientos.mobiusboxing.com", OPTS), null);

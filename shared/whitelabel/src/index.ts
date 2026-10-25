@@ -59,7 +59,7 @@ export type TenantResolution =
 export interface TenantParseOptions {
   /** Domain label carrying the module, e.g. "vencimientos" — not the slug. */
   domainLabel: string;
-  /** Defaults to "mobiusboxing.com". */
+  /** Defaults to the build's VITE_BASE_DOMAIN, else "mobiusboxing.com". */
   baseDomain?: string;
   /**
    * Query string the `?tenant=` dev/preview override is read from. Defaults to
@@ -73,7 +73,10 @@ export interface TenantParseOptions {
   envTenant?: string;
 }
 
-const DEFAULT_BASE_DOMAIN = "mobiusboxing.com";
+// Read defensively: node's test runner has no `import.meta.env`.
+const BUILD_BASE_DOMAIN = (import.meta as { env?: Record<string, string | undefined> }).env
+  ?.VITE_BASE_DOMAIN;
+const DEFAULT_BASE_DOMAIN = BUILD_BASE_DOMAIN || "mobiusboxing.com";
 const FETCH_TIMEOUT_MS = 8_000;
 
 /** A DNS label: lowercase alphanumerics and inner hyphens, 1–63 chars. */
