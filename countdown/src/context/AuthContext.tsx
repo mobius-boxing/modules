@@ -2,10 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 import {
   clearCachedUser,
-  clearToken,
-  getToken,
   readCachedUser,
-  setToken,
   writeCachedUser,
 } from "@mobius-modules/auth";
 import type { ModuleEnablement } from "@mobius-modules/auth";
@@ -44,29 +41,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => readCachedUser<AuthUser>(USER_KEY));
   const [loading, setLoading] = useState(true);
 
-  // Trust the cached user for the first paint, then confirm with the server — a
-  // token expired since last visit must not leave a ghost session, and the
-  // module list may have changed while the tab was closed.
+  // Trust the cached user for the first paint, then confirm with the server. The access
+  // token is memory-only, so the refresh cookie is traded for one first: a dead session
+  // must not leave a ghost user, and the module list may have changed while the tab was closed.
   useEffect(() => {
     let cancelled = false;
-    if (getToken() === null) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
     api
-      .me()
+      .restoreSession()
+      .then((restored) => (restored ? api.me() : null))
       .then((fresh) => {
         if (cancelled) return;
-        writeCachedUser(USER_KEY, fresh);
-        setUser(fresh);
+        if (fresh === null) {
+          clearCachedUser(USER_KEY);
+          setUser(null);
+        } else {
+          writeCachedUser(USER_KEY, fresh);
+          setUser(fresh);
+        }
       })
       .catch(() => {
-        // A 401 is already handled by the api client: it clears the shared
-        // session and sends the tab to /login. Anything else is a blip (offline,
-        // CORS, an API restarting) and must NOT sign the user out of every
-        // Mobius app — so the session is only dropped when the token is gone.
-        if (!cancelled && getToken() === null) setUser(null);
+        // A 401 is already handled by the api client. Anything else is a blip (offline,
+        // CORS, an API restarting) and must NOT sign the user out: keep what is painted.
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -76,25 +71,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // One session, many apps: the login or logout may have happened in another
-  // tab, on another subdomain. Re-read the cookie whenever this tab comes back
-  // to the front — adopt a session started elsewhere, drop one ended elsewhere.
+  // One session, many apps: the login may have happened in another tab, on another
+  // subdomain. A signed-out tab coming back to the front tries to adopt it. A logout
+  // elsewhere surfaces on this tab's next request, whose refresh 401s.
   useEffect(() => {
     if (loading) return;
     const sync = () => {
-      const signedIn = getToken() !== null;
-      if (signedIn && !user) {
-        api
-          .me()
-          .then((fresh) => {
-            writeCachedUser(USER_KEY, fresh);
-            setUser(fresh);
-          })
-          .catch(() => {});
-      } else if (!signedIn && user) {
-        clearCachedUser(USER_KEY);
-        setUser(null);
-      }
+      if (user) return;
+      api
+        .restoreSession()
+        .then((restored) => (restored ? api.me() : null))
+        .then((fresh) => {
+          if (fresh === null) return;
+          writeCachedUser(USER_KEY, fresh);
+          setUser(fresh);
+        })
+        .catch(() => {});
     };
     window.addEventListener("focus", sync);
     document.addEventListener("visibilitychange", sync);
@@ -106,8 +98,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const result = await api.login(email, password);
-    // Cookie first: the cached user is stamped with the token it belongs to.
-    setToken(result.token);
     writeCachedUser(USER_KEY, result.user);
     setUser(result.user);
   }, []);
@@ -116,9 +106,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // half of one login: a shared sign-in with a per-app sign-out would leave
   // the user logged in somewhere they thought they had left.
   const logout = useCallback(() => {
-    clearToken();
     clearCachedUser(USER_KEY);
     setUser(null);
+    void api.logout();
   }, []);
 
   const value = useMemo<AuthState>(() => {

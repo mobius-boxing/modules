@@ -1,25 +1,16 @@
 /*
  * The Mobius session — one login for the whole ecosystem.
  *
- * `app.mobiusboxing.com`, `backoffice.mobiusboxing.com` and every module tenant
- * (`{client}.vencimientos.mobiusboxing.com`, `{client}.flujos.mobiusboxing.com`)
- * are different ORIGINS, so localStorage cannot carry a session between them.
- * A per-module localStorage key therefore made every module an island: signing
- * into the backoffice and clicking through to a module landed on a login form.
- * The JWT lives in a cookie scoped to the parent domain instead, so one login
- * — and one logout — apply everywhere.
+ * The access token lives in memory only. The durable half of the session is an
+ * HttpOnly refresh cookie that mobius-api sets on its own host: every app on
+ * `*.mobiusboxing.com` reaches it with `withCredentials`, trades it for a fresh
+ * access token on load (see `createSessionRefresher` in
+ * `@mobius-modules/api-client`), and one logout ends it for all of them.
  *
- * This is the module-side twin of `src/utils/session.ts` in mobius-web-app and
- * mobius-backoffice-app: same cookie name, same domain, same max-age. Those are
- * separate git repos so the code cannot literally be shared, but the VALUES
- * must not drift — whichever app wrote the cookie decides how long every other
- * app's session lasts.
- *
- * The cookie is deliberately NOT HttpOnly: mobius-api authenticates only from
- * the `Authorization: Bearer` header and rejects a cookie-only request (its
- * cookie-auth-rejection integration test pins that), so JS has to read it.
- * That is also why widening the cookie to more subdomains grants it no ambient
- * authority it did not already have — a request without the header is still 401.
+ * The only cookie JS still writes is the device-approval secret below, scoped
+ * to the parent domain so a browser approved in the web app is approved here
+ * too. It is the module-side twin of `src/utils/session.ts` in mobius-web-app
+ * and mobius-backoffice-app: separate git repos, so the VALUES must not drift.
  */
 
 /**
@@ -40,9 +31,6 @@ const BUILD_ENV = (import.meta as { env?: Record<string, string | undefined> }).
 const COOKIE_PREFIX = BUILD_ENV.VITE_COOKIE_PREFIX || "mobius";
 
 export const SESSION_COOKIE = `${COOKIE_PREFIX}_session`;
-
-/** In step with mobius-web-app / mobius-backoffice-app. The API still enforces JWT expiry. */
-const MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 /**
  * The one domain the ecosystem lives on — every customer-facing host is a
@@ -79,20 +67,27 @@ export function buildSessionCookie(
   return parts.join("; ");
 }
 
+let accessToken: string | null = null;
+
 export function getToken(): string | null {
-  const match = document.cookie.match(new RegExp("(?:^|; )" + SESSION_COOKIE + "=([^;]*)"));
-  return match ? decodeURIComponent(match[1]) : null;
+  return accessToken;
 }
 
 export function setToken(token: string): void {
-  document.cookie = buildSessionCookie(
-    `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
-    MAX_AGE_SECONDS,
-    window.location,
-  );
+  accessToken = token;
 }
 
 export function clearToken(): void {
+  accessToken = null;
+}
+
+/**
+ * Older builds kept the JWT in a JS-readable `${prefix}_session` cookie. It is
+ * expired with the attributes it was written with, or the browser keeps it
+ * beside the new cookies. Guarded because node's test runner has no `document`
+ * when this module loads.
+ */
+if (typeof document !== "undefined") {
   document.cookie = buildSessionCookie(`${SESSION_COOKIE}=`, 0, window.location);
 }
 
@@ -211,31 +206,23 @@ export function deviceNotApprovedCopy(
 
 /*
  * The signed-in user, cached per origin so a reload paints the shell instead of
- * a spinner. It is NOT the session — the cookie is — and it is stamped with a
- * fingerprint of the token it was read with, then thrown away when the two
- * disagree. Without that stamp a tab showing user A would paint A's name for a
- * frame after B signed in on another subdomain, because the cache is per-origin
- * and the login was not.
+ * a spinner. It is NOT the session: the access token is memory-only, so the
+ * cache is only a first-paint hint that the bootstrap refresh confirms or
+ * replaces. It must be cleared whenever the session ends.
  */
 
-const fingerprint = (token: string): string => token.slice(-24);
-
 interface CachedUser<T> {
-  token: string;
   user: T;
 }
 
 export function readCachedUser<T>(key: string): T | null {
-  const token = getToken();
-  if (token === null) return null;
-
   const raw = localStorage.getItem(key);
   if (raw === null) return null;
 
   try {
     const entry = JSON.parse(raw) as CachedUser<T>;
-    // Also catches the pre-SSO shape (a bare user, no `token`): it is discarded.
-    if (entry?.token !== fingerprint(token)) {
+    // Also catches the pre-SSO shape (a bare user, no `user` key): it is discarded.
+    if (entry?.user === undefined) {
       localStorage.removeItem(key);
       return null;
     }
@@ -260,14 +247,8 @@ function withoutDeviceSession<T>(user: T): T {
   return cacheable as T;
 }
 
-/** Call AFTER `setToken` on login — the stamp is read from the current cookie. */
 export function writeCachedUser<T>(key: string, user: T): void {
-  const token = getToken();
-  if (token === null) return;
-  localStorage.setItem(
-    key,
-    JSON.stringify({ token: fingerprint(token), user: withoutDeviceSession(user) }),
-  );
+  localStorage.setItem(key, JSON.stringify({ user: withoutDeviceSession(user) }));
 }
 
 export function clearCachedUser(key: string): void {

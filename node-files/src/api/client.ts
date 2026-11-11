@@ -1,12 +1,13 @@
 import axios from "axios";
 import type { AxiosInstance, AxiosResponse } from "axios";
-import { createApiClient } from "@mobius-modules/api-client";
+import { createApiClient, createSessionRefresher } from "@mobius-modules/api-client";
 import {
   clearCachedUser,
   clearToken,
   dropLegacyToken,
   getDeviceToken,
   getToken,
+  setToken,
   requestDevice as requestDeviceSession,
   setDeviceToken,
 } from "@mobius-modules/auth";
@@ -80,20 +81,31 @@ function toApiError(error: unknown, fallback = FALLBACK_MESSAGE): ApiError {
 
 /**
  * A 401 from the login call is a wrong password, not an expired session — the
- * screen renders it. Every other 401 means the token is gone: the shared client
- * drops it, and this sends the tab to the login screen (a full navigation, so
- * no half-authenticated component keeps polling).
+ * screen renders it. Any other 401 first tries one silent refresh; only when the
+ * refresh cookie is dead too does the shared client drop the token, and this
+ * sends the tab to the login screen (a full navigation, so no half-authenticated
+ * component keeps polling).
  */
+const endSession = () => {
+  clearCachedUser(USER_KEY);
+  if (window.location.pathname !== "/login") window.location.assign("/login");
+};
+
+const refresher = createSessionRefresher<{ token: string; expiresIn: number }>({
+  baseUrl: BASE,
+  setToken,
+  clearToken,
+  onSessionEnded: endSession,
+});
+
 const http: AxiosInstance = createApiClient({
   baseUrl: BASE,
   getToken,
   clearToken,
+  refresher,
   getDeviceToken,
   selfHandled401Paths: [`${HOST}/auth/login`],
-  onSessionExpired: () => {
-    clearCachedUser(USER_KEY);
-    if (window.location.pathname !== "/login") window.location.assign("/login");
-  },
+  onSessionExpired: endSession,
 });
 
 /**
@@ -198,16 +210,39 @@ export const api = {
    */
   login(email: string, password: string): Promise<{ user: AuthUser; token: string }> {
     return unwrap(
-      http.post<{ data: { user: AuthUser; token: string; device?: DeviceSession | null } }>(
-        `${HOST}/auth/login`,
-        { email, password },
-      ),
-    ).then(({ user, token, device }) => {
+      http.post<{
+        data: { user: AuthUser; token: string; expiresIn: number; device?: DeviceSession | null };
+      }>(`${HOST}/auth/login`, { email, password }),
+    ).then(({ user, token, expiresIn, device }) => {
+      setToken(token);
+      refresher.schedule(expiresIn);
       if (device?.token) setDeviceToken(device.token);
       // The cookie is the only holder of the raw secret: it is dropped here so
       // it never sits in React state (or anything rendered from it).
       return { user: { ...user, device: device ? { ...device, token: undefined } : null }, token };
     });
+  },
+
+  /** Trades the refresh cookie for an access token; false when there is no live session. */
+  async restoreSession(): Promise<boolean> {
+    try {
+      await refresher.refresh();
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  /** Ends the session for every Mobius app: the API revokes it and clears the refresh cookie. */
+  async logout(): Promise<void> {
+    try {
+      await http.post(`${HOST}/auth/logout`);
+    } catch {
+      // The local session still ends; a failed revoke expires on its own.
+    } finally {
+      refresher.cancel();
+      clearToken();
+    }
   },
 
   me(): Promise<AuthUser> {
